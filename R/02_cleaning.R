@@ -11,7 +11,7 @@ titanic_clean <- titanic_clean %>%
 # -- Standardize missing values (NAs) --
 #  - 'Fare': Zero fare is assumed to be missing data rather than free tickets,
 #  - 'Embarked' & 'Boarded': Convert empty strings to NA,
-#  - 'Lifeboat': Normalize irregular entries, fix typos, and code unboarded.
+#  - 'Lifeboat': Normalize irregular entries, fix typos.
 #     Replace NA with 'NS' (No Survival) for passengers who did not survive.
 
 titanic_clean <- titanic_clean %>% 
@@ -32,6 +32,7 @@ titanic_clean$Lifeboat[titanic_clean$Survived == 0 &
                        is.na(titanic_clean$Lifeboat)] <- 'NS'
 
 # -- Impute missing data --
+
 # - 'Survival': we impute based on historical records
 # Known lifeboat fatalities (in lifeboats 4, 14, A, B) were checked
 # via Encyclopedia Titanica against missing 'Survived' records.
@@ -58,22 +59,38 @@ titanic_clean <- titanic_clean %>%
   group_by(Pclass) %>% 
   mutate(
     Fare = if_else(is.na(Fare), mean(Fare, na.rm = TRUE), Fare),
-    Age_wiki  = if_else(is.na(Age_wiki),  mean(Age_wiki,  na.rm = TRUE), Age_wiki)) %>%
+    Age_wiki  = if_else(is.na(Age_wiki),  mean(Age_wiki,  na.rm = TRUE),
+                        Age_wiki)) %>%
   ungroup()
-    
-# -- Remove not needed/duplicate columns
+
+# - 'Boarded' and 'Embarked': both have a handful of NAs but the missing values
+# do not occur in the same observations (df_temp),
+# we impute 'Embarked' based on 'Boarded'
+
+# df_temp <- titanic_clean %>% 
+#   filter(is.na(Embarked) | is.na(Boarded)) %>% 
+#   select(Embarked, Boarded)
+
+titanic_clean <- titanic_clean %>% 
+  mutate(
+    Embarked = if_else(
+      is.na(Embarked),
+      substr(Boarded, 1, 1),
+      Embarked))
+
+# -- Remove not needed/duplicate columns --
 # Duplicates were removed based on number of NAs
 colSums(is.na(titanic_clean))
 titanic_clean <- titanic_clean %>%
   select(-c('Name_wiki', 'Name', 'Age', 'Class', 'Boarded'))
 
-# -- Rename columns for better readability
+# -- Rename columns for better readability --
 names(titanic_clean)
 titanic_clean <- titanic_clean %>% 
   rename(
     class = Pclass,
     siblings_spouses = SibSp,
-    parent_children = Parch,
+    parents_children = Parch,
     age = Age_wiki,
     survived = Survived,
     sex = Sex,
@@ -84,11 +101,24 @@ titanic_clean <- titanic_clean %>%
   )
 
 # -- Convert categorical attributes to factors
-# 'Survived' remains numeric for easy probability/mean calculations
-categorical_cols <- c('class', 'embarked', 'sex', 'lifeboat')
+categorical_cols <- c('class', 'embarked', 'sex', 'lifeboat', 'survived')
 
 titanic_clean <- titanic_clean %>% 
   mutate(across(all_of(categorical_cols), as.factor))
+
+
+## -- Fix factor levels and their names --
+
+titanic_clean <- titanic_clean %>%
+  mutate(
+    class = factor(class, levels=c('1', '2', '3'),
+                   labels = c('1st', '2nd', '3rd')),
+    survived = factor(survived, levels = c(0,1), labels=c('No', 'Yes')),
+    lifeboat = factor(lifeboat, levels = str_sort(unique(na.omit(lifeboat)),
+                                                  numeric = TRUE))
+  )
+
+# --------------------------------------------------------------------------- #
 
 glimpse(titanic_clean)
 colSums(is.na(titanic_clean))
