@@ -1,5 +1,7 @@
 # R/02_cleaning.R
-titanic_clean <- titanic_raw
+
+titanic_fixed <- read.csv(here('data', 'titanic_fixed.csv'))
+titanic_clean <- titanic_fixed
 
 # -- Remove unnecessary columns --
 not_needed_names <- c('PassengerId', 'Cabin', 'WikiId',
@@ -59,7 +61,7 @@ titanic_clean <- titanic_clean %>%
   group_by(Pclass) %>% 
   mutate(
     Fare = if_else(is.na(Fare), mean(Fare, na.rm = TRUE), Fare),
-    Age_wiki  = if_else(is.na(Age_wiki),  mean(Age_wiki,  na.rm = TRUE),
+    Age_wiki  = if_else(is.na(Age_wiki),  ceiling(mean(Age_wiki,  na.rm = TRUE)),
                         Age_wiki)) %>%
   ungroup()
 
