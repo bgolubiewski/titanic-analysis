@@ -35,3 +35,7 @@ titanic_clean <- titanic_clean %>%
                                              'adult', 'senior')),
     is_child = factor(is_child, levels = c(0,1), labels=c('adult', 'child'))
   )
+
+
+# -- export clean data file --
+write_csv(titanic_clean, here("data/titanic_clean.csv"))
