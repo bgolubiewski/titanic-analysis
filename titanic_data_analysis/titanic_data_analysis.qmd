@@ -1,0 +1,541 @@
+---
+title: "Titanic Data Analysis"
+author: "Bartosz Golubiewski"
+format: 
+  html:
+    page-layout: full
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    number-sections: true
+    code-fold: true
+    theme: flatly
+    css: ../resources/styles.css
+    embed-resources: true
+
+execute:
+  echo: false
+---
+
+```{r}
+#| label: setup
+#| output: false
+
+# Data manipulation and visualization
+library(tidyverse)
+library(scales)
+library(patchwork)
+
+# Tables
+library(knitr)
+library(kableExtra)
+
+# Data analysis
+library(DataExplorer)
+library(rcompanion)
+library(corrplot)
+
+# File management
+library(here)
+
+
+source(here("R", "01_import.R"))
+source(here("R", "02_cleaning.R"))
+source(here("R", "03_features.R"))
+source(here("R", "04_eda.R"))
+
+source(here("R", "functions.R"))
+source(here("R", "plots_tables.R"))
+```
+
+# Introduction
+
+The Titanic disaster is the world's most famous shipwreck. Beyond it's historical significance, the disaster provides an interesting case study for exploring patterns in passenger characteristics and survival outcomes. I this report, we use an expanded version of a well-known Titanic dataset, obtained from [Kaggle — Titanic Extended Dataset](https://www.kaggle.com/datasets/pavlofesenko/titanic-extended/data). It contains information about passengers aboard the RMS Titanic during it's maiden voyage, including demographic variables, ticket and travel information, and survival status.
+
+These characteristics provide an opportunity to examine how different passenger characteristics were associated with their chances of survival. The aim of this report is to explore the structure of the dataset and to identify the patters that may help explain differences in survival outcomes.
+
+The analysis begins with a general overview of the data, including it's structure, variable types, and missing values, followed by the necessary data preparation. We then conduct an exploratory data analysis to examine the distributions of individual variables and explore relationships between them.
+
+To further investigate the underlying structure of the data, Principal Component Analysis (PCA) and Multidimensional Scaling (MDS) were applied....
+
+# Data Overview
+
+The raw dataset consists of `r dim(titanic_raw)[1]` records and `r dim(titanic_raw)[2]` variables, of which `r sum(sapply(titanic_raw, is.numeric))` are quantitative and `r sum(sapply(titanic_raw, is.character))` are categorical. Detailed information on the variables and their data types is provided in @tbl-raw-data-types.
+
+```{r}
+#| label: tbl-raw-data-types
+#| tbl-cap: 'Variables, their types and number of missing records in raw dataset.' 
+#| cap-location: bottom
+#| layout-ncol: 2
+
+df_tbl <- data.frame(
+  name = names(titanic_raw),
+  type = sapply(titanic_raw, class),
+  NAs = sapply(titanic_raw, function(var) sum(is.na(var)))
+)
+
+n <- ceiling(nrow(df_tbl) / 2)
+df1 <- df_tbl[1:n, ]
+df2 <- df_tbl[(n+1):nrow(df_tbl),]
+
+create_simple_table(df1, c('Variable', 'Type', 'NAs'))
+create_simple_table(df2, c('Variable', 'Type', 'NAs'))
+
+```
+
+In total, the dataset contains `r sum(is.na(titanic_raw))` missing values. However, even a preliminary inspection of the data suggests that the actual extent of missing information is considerably greater, as some missing values are encoded in other forms (see @sec-irr-values).
+
+# Data Cleaning and Preparation
+
+## Missing Values and Irregular Entries {#sec-irr-values}
+
+The first step of the data preparation process was to inspect the raw dataset for missing values, inconsistent data formats, and other potential issues that could affect subsequent analyses. The following key issues were identified and addressed:
+
+-   `Fare`: Zero values were treated as missing data rather than as valid fares. Although complimentary tickets did exist historically (e.g., for Bruce Ismay, his servants, and Thomas Andrews), treating zero fares as missing values was considered more appropriate for the purposes of this analysis.
+-   `Embarked` and `Boarded`: Empty strings were recoded as `NA` values.
+-   `Lifeboat`: Empty strings and question marks (`?`) were converted to `NA`. Additionally, irregular formatting in entries (e.g., `A[64]`) was cleaned to standard identifiers (e.g., `A`).
+
+## Missing Data Imputation
+
+Missing values were imputed where possible using historical records, summary statistics, and contextual knowledge:
+
+-   `Embarked` and `Boarded`: These variables serve essentially identical purposes duplicates. Because missing values were not overlapping, missing entries in `Boarded` were imputed using corresponding values from `Embarked`.
+
+-   `Lifeboat`: A new category was introduced. For passengers who perished in the disaster, missing values in `Lifeboat` were transformed into `NS` (*No Survival*).
+
+-   `Survived`:
+
+    -   The extended dataset includes additional information about passengers based on the passenger list available on [Wikipedia](https://en.wikipedia.org/wiki/Passengers_of_the_Titanic#Passenger_list). Unfortunately, the dataset omits survival status, as this information is represented using color coding in the original Wikipedia table. This issue was addressed by scraping the Wikipedia table and merging the extracted survival information with the Kaggle dataset. As a result, the number of missing values in `Survived` has been significantly reduced.
+
+    -   In several instances, survival status was missing despite existing records in the `Lifeboat` variable. Historical records (e.g., [*Encyclopedia Titanica*](https://www.encyclopedia-titanica.org) indicate that only a small number of known fatalities occurred among passengers who reached a lifeboat. Since no such cases were identified in this dataset, all passengers recorded as having occupied a lifeboat were assumed to have survived.
+
+-   `Age_wiki`: Missing values were imputed using the mean age within the passenger's class of travel.
+
+-   `Fare`: Missing values were imputed using the mean fare within the passenger's class of travel.
+
+## Data Preparation
+
+After addressing the missing values, the dataset was further prepared for analysis. This included removing unnecessary information, standardizing variable names and data types. Following changes were made:
+
+-   Redundant columns (`Name_wiki`, `Name`, `Age`, `Class`, `Boarded`) were removed. When deciding between duplicate variables, preference was given to those with fewer missing records.
+
+-   Column names were standardized using `snake_case` notation, and some variables were renamed to improve readability (e.g., `SibSp` became `siblings_spouses`),
+
+-   Categorical variables, including `class`, `embarked`, `sex`, `lifeboat`, and `survived`, were converted to factors.
+
+-   Factor level and labels were standardized (e.g., binary indicators `0` and `1` in `survived` were relabeled as `No` and `Yes`).
+
+## Data Transformation
+
+Additional features were created from the existing variables to capture information that may be useful for the subsequent analysis:
+
+-   `family_size`: Defined as `siblings_spouses + parents_children + 1`.
+-   `family_size_group`: A factor with 4 distinct levels:
+    -   `alone`: if `family_size` $= 1$
+    -   `small`: if $2 \le$ `family_size` $\le 4$
+    -   `medium`: if $5 \le$ `family_size` $\le 7$
+    -   `large`: if `family_size` $> 7$
+-   `is_child`: A factor classifying age brackets:
+    -   `child`: if `age` $< 15$ (reflecting the historical context of the Titanic, where teenagers were treated as adults)
+    -   `adult`: if `age` $\ge 15$
+-   `age_group`: A factor segmenting life stages into 4 categories:
+    -   `child`: if `age` $< 15$
+    -   `young adult`: if $15 \le$ `age` $< 30$
+    -   `adult`: if $30 \le$ `age` $< 60$
+    -   `senior`: if `age` $\ge 60$
+
+Following this process, the now cleaned dataset contains `r ncol(titanic_clean)` variables — `r sum(sapply(titanic_clean, is.numeric))` quantitative and `r sum(sapply(titanic_clean, is.factor))` qualitative. The number of missing values is `r sum(is.na(titanic_clean))`. Detailed information is provided in @tbl-clean-data-types.
+
+```{r}
+#| label: tbl-clean-data-types
+#| tbl-cap: 'Variables, their types and number of missing records in dataset after data cleaning.' 
+#| cap-location: bottom
+
+df_tbl <- data.frame(
+  name = names(titanic_clean),
+  NAs = sapply(titanic_clean, function(var) sum(is.na(var))),
+  type = sapply(titanic_clean, class),
+  levels = sapply(titanic_clean, function(var) {
+    if (is.factor(var)) paste0(levels(var), collapse = ', ')
+    else '' 
+  })
+)
+
+create_simple_table(df_tbl, c('Variable', 'NAs', 'Type', 'Levels'))
+
+```
+
+# Exploratory Data Analysis
+
+Exploratory Data Analysis (EDA) is an essential step in understanding the patterns and key characteristics of the dataset. In this section we examine the data using summary statistics and visualizations to identify relationships between variables.
+
+## Distributions of Quantitative Variables
+
+Here, we take a closer look at the distributions of the quantitative variables (`r quant_vars`) in the dataset. This helps us understand how the values are spread out and spot any noticeable patterns or outliers.
+
+```{r}
+#| label: tbl-quant-summary
+#| tbl-cap: Summary measures of quantitative variables.
+#| cap-location: bottom
+
+df_tbl <- data_quant %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "variable",
+    values_to = "value") %>% 
+  group_by(variable) %>% 
+  summarise(
+    min = min(value, na.rm = TRUE),
+    max = max(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    mean = mean(value, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    q1 = quantile(value, 0.25, na.rm = TRUE),
+    q3 = quantile(value, 0.75, na.rm = TRUE)) %>%
+  mutate(
+    across(
+      c(min, max, mean, sd, median, q1, q3), ~ round(.x, 2)))
+
+create_simple_table(df_tbl, c(
+      "Variable", "Min", "Max",
+      "SD", "Mean", "Median", "Q1", "Q3"))
+
+```
+
+Summary statistics for the quantitative variables can be found in @tbl-quant-summary. Missing values were removed separately for each variables when calculation the statistics. It is worth noting the large differences in the ranges of some variables' values, which may indicate a need for standarization when using distance-sensitive algorithms (@sec-modeling).
+
+The same conclusion can be drawn from the analysis of boxplots shown in @fig-quant-boxplots. Furthermore, a number of outliers can be observed for each variable. They are represented by individual points and correspond to values outside the range of $Q_1 - 1.5\cdot(Q_3 - Q_1)$ and $Q_3 + 1.5\cdot(Q_3 - Q_1)$.
+
+```{r}
+#| label: fig-quant-boxplots
+#| fig-cap: "Distributions (boxplots) of quantitative variables."
+#| fig-width: 8
+#| fig-height: 8
+
+plots <- lapply(quant_vars, draw_distribution_boxplot)
+wrap_plots(plots, ncol = 2)
+```
+
+The kernel density estimates of quantitative variables, shown in @fig-quant-densities, reveal that all of the variables exhibit noticeable positive skewness, with most observations concentrated toward the lower end of their respective ranges. Although `age` also shows a slight positive skew, it's distribution is considerably closer to symmetry than those of the other variables.
+
+It should also be noted that density plots of the discrete variables (`siblings_spouses`, `parents_children`, and `family_size`) have a jagged, spiky appearance due to their integer-valued nature.
+
+```{r}
+#| label: fig-quant-densities
+#| fig-cap: Kernel density estimates of quantatitive variables.
+#| fig-width: 8
+#| fig-height: 8
+
+plots <- lapply(quant_vars, draw_distribution_density)
+wrap_plots(plots, ncol = 2)
+```
+
+## Distributions of Qualitative Variables {#sec-dist-qual}
+
+Here, we take a closer look at the distributions of the qualitative variables (`r qual_vars`) in the dataset. The distributions are visualized in @fig-qual-bar. Missing values were excluded from the analysis.
+
+```{r}
+#| label: fig-qual-bar
+#| fig-cap: "Distributions (barplots) of qualitative variables."
+#| fig-width: 9
+#| fig-height: 9
+
+
+plots <- lapply(setdiff(qual_vars, 'lifeboat'), draw_distribution_barplot)
+wrap_plots(plots, ncol = 2)
+
+```
+
+Non-survivors constitute majority of passengers, with a fatality rate of 61,6%. This is consistent with the distribution of `lifeboat` (@tbl-lifeboat-distr) --- when the corresponding lifeboat categories are combined, the proportion of passengers who did not board a lifeboat is broadly consistent with the proportion of non-survivors. The small discrepancy can be attributed primarily to missing values.
+
+Males account for nearly two-thirds of the passengers. The age distribution is concentrated in `young adult` and `adult` groups, which together account for almost 90% of all passengers. More than half of the passengers traveled in 3rd class, making it more numerous than 1st and 2nd class combined. Most passengers traveled without relatives, accounting for approximately 60% of all observations. Although `small` family groups represent 33% of observations, larger families are rare.
+
+The distribution of departure locations is heavily imbalanced, with Southampton (`S`) accounting for 70.0% of passengers, followed by Cherbourg (`C`) with 20.6% and Queenstown (`Q`) with 9.4%.
+
+```{r}
+#| label: tbl-lifeboat-distr
+#| tbl-cap: "Distribution of `lifeboat`."
+#| fig-cap-location: bottom
+#| layout-ncol: 2
+
+counts <- table(titanic_clean$lifeboat)
+percents <- round(counts / sum(counts) * 100, 1)
+    
+df_tbl <- data.frame(
+  level = names(counts),
+  count = as.vector(counts),
+  percent = paste0(as.vector(percents), '%')
+)
+
+n <- ceiling(nrow(df_tbl) / 2)
+df1 <- df_tbl[1:n, ]
+df2 <- df_tbl[(n+1):nrow(df_tbl),]
+
+create_simple_table(df1, c('Lifeboat', 'Count', '%'))
+create_simple_table(df2, c('Lifeboat', 'Count', '%'))
+
+```
+
+## Correlation Matrix {#sec-cor-matrix}
+
+To further investigate the relationships between variables, we examine their pairwise correlations. This allows us to assess the strength and directions of the associations between variables and identify any particularly strong relationships.
+
+The correlation matrices for the quantitative variables are shown in @fig-cor-matrix-quant. Two different correlation measures were used: Spearman's rank correlation (@fig-cor-matrix-quant-1) and Pearson's correlation (@fig-cor-matrix-quant-2).
+
+Pearson's correlation measures the strength of linear relationships between variables and can be sensitive to outliers and departures from normality. In contrast, Spearman's correlation is based on the ranks of the observations rather than their raw values. As a result, it is less sensitive to outliers and is suitable for detecting relationships that may not be strictly linear.
+
+Both measures range from $-1$ to $1$, where negative values indicate an inverse association and positive values indicate a direct association. Values $> |0.7|$ can be interpreted as indicating strong associations.
+
+```{r}
+#| label: fig-cor-matrix-quant
+#| fig-cap: 'Correlation matrixes for quantitative variables'
+#| fig-subcap:
+#|   - 'Spearman'
+#|   - 'Pearson'
+#| layout-ncol: 2
+
+# No NAs in qual. variables - we can use all observations
+cor_matrix_spearman <- cor(data_quant, use = 'all.obs', method = 'spearman')
+cor_matrix_pearson <- cor(data_quant, use = 'all.obs', method = 'pearson')
+
+corrplot(
+    cor_matrix_spearman,
+    method = "color",
+    type = "upper",
+    addCoef.col = "black",
+    tl.col = "black",
+    tl.srt = 45,
+    mar = c(0, 0, 2, 0)
+  )
+
+corrplot(
+    cor_matrix_pearson,
+    method = "color",
+    type = "upper",
+    addCoef.col = "black",
+    tl.col = "black",
+    tl.srt = 45,
+    mar = c(0, 0, 2, 0)
+  )
+
+```
+
+In this dataset, Pearson's correlation generally produces weaker correlation coefficients than Spearman's, particularly for pairs involving `fare`. As shown in @fig-quant-densities and @fig-quant-boxplots, fare is strongly positively skewed and contains several high-value outliers. Under these conditions, Spearman's correlation is less affected by extreme observations and therefore provides a more robust measure of the strength of the associations.
+
+A strong correlation can also be observed between `family_size` and its components, with coefficients of $0.85$ for `siblings_spouses` and $0.80$ for `parents_children`. This relationship is expected, as both variables directly contribute to the overall `family_size`. To avoid redundant features in later predictive models, we can keep `family_size` and remove `siblings_spouses` and `parents_children`.
+
+To examine relationships among categorical variables, we calculate a *Cramer's V association matrix* (@fig-cor-matrix-qual). *Cramer's V* measures the strength of association between categorical variables based on the $\chi^2$ statistic. Unlike previous correlation coefficients, *Cramer's V* is non-directional. Its values range from $0$, indicating no association, to $1$, indicating a perfect association.
+
+```{r}
+#| label: fig-cor-matrix-qual
+#| fig-cap: "Cramer's V Association Matrix (Qualitative Variables)."
+
+cramer_matrix <- calc_cramer_matrix(data_qual)
+corrplot(
+  cramer_matrix,
+  method = "color",
+  type = "upper",
+  addCoef.col = "black",
+  is.corr = FALSE, # Cramer's matrix has values in [0, 1]
+  col.lim = c(0, 1),
+  tl.col = "black",
+  tl.srt = 45,
+  tl.cex = 0.8,
+  mar = c(0, 0, 2, 0)
+)
+```
+
+*Cramer's V* provides more interesting results for use in further analysis. `survived` shows a strong association with `lifeboat` ($0.68$), further confirming the trend observed in @sec-dist-qual. Additionally, survived demonstrates a strong association with sex ($0.52$),
+
+Furthermore, strong associations between `lifeboat` and `sex` ($0.57$) and between `lifeboat` and `class` ($0.52$) can be observed. The perfect association between `is_child` and `age_group` ($1.00$) is expected, as `is_child` was derived directly from `age_group` --- one of these features should be omitted in predictive models.
+
+## Qualitative Variables vs Survival {#seq-qual-vs-surv}
+
+To further examine the associations between qualitative features and the target variable (`survived`), proportion plots were constructed (@fig-survival-barplots).
+
+The strong *Cramer's V association* previously observed for `sex` (@fig-cor-matrix-qual) is clearly justified by these distributions, as the difference in survival rate between genders is staggering ($72.8\%$ for females vs. $19.3\%$ for males). Conversely, while the overall association coefficient between `class` and `survived` was moderate, the plot reveals clear differences in survival across classes, with passengers in 1st class achieved a survival rate of $62.6\%$ nearly two and a half times higher than those in 3rd class ($25.4\%$), with 2nd class occupying a middle position ($43.8\%$).
+
+```{r}
+#| label: fig-survival-barplots
+#| fig-cap: 'Survival rates by selected qualitative variables.'
+#| fig-width: 8
+#| fig-height: 8
+
+selected_variables <- c('sex', 'class', 'age_group', 'family_size_group')
+plots <- lapply(selected_variables, draw_survival_barplot)
+
+wrap_plots(plots, ncol=2) +
+  plot_layout(guides = 'collect') &
+  theme(legend.position = 'bottom')
+```
+
+Regarding age categories, children exhibited the highest survival rate ($52.0\%$). The survival rates for young adults ($35.3\%$) and adults ($39.8\%$) were substantially lower and relatively comparable. Although seniors recorded the lowest survival rate ($26.8\%$), this result should be interpreted with caution due to the small sample size of this subgroup (as shown in @fig-qual-bar).
+
+A similar caveat applies to family size categories --- while medium ($23.8\%$) and large ($0.0\%$) families display notably lower survival rates, they represent a small minority of observations. Of greater significance is the contrast between solo travellers (`alone`) and small families --- individuals traveling in small family units were nearly twice as likely to survive ($56.3\%$) compared to those traveling alone ($30.5\%$).
+
+## Quantitative Variables vs Survival
+
+To examine how continuous variables relate to survival status (`survived`), kernel density estimates were constructed (@fig-survival-densities).
+
+The continuous distribution of `age` aligns closely with the earlier categorical findings. The survival density (blue) visibly exceeds non-survival (red) for young children under 10 years old. Between ages 20 and 30, non-survival dominates slightly, after which the two curves broadly overlap across middle and older age brackets. Similarly, the continuous variant of `family_size_group` does not provide any new information, as passengers traveling alone had a higher fatality rate, while those traveling in smaller families (2--4 people) had a higher chance of survival.
+
+```{r}
+#| label: fig-survival-densities
+#| fig-cap: 'Survival rates by selected quantitative variables.'
+#| fig-width: 5
+#| fig-height: 7
+
+selected_variables <- c('age', 'fare', 'family_size')
+plots <- lapply(selected_variables, draw_survival_density)
+
+wrap_plots(plots, nrow = 3) +
+  plot_layout(guides = 'collect') &
+  theme(legend.position = 'bottom')
+```
+
+A far more pronounced divergence appears in `fare` (displayed on a $\log_{10}$ scale to handle skewness). The lower end of fare spectrum is dominated by non-survivors, producing a sharp red peak. Beyond \$30, and particularly \$100, the density shifts in favour of survivors. This further confirms that better class of travel increased the likelihood of survival.
+
+## Multivariate Analysis
+
+In this sections, we combine the previously examined variables to gain a more comprehensive understanding of the factors associated with survival. By considering multiple variables simultaneously, we can identify patterns and relationships that may not be apparent from the individual analyses and use them as a basis for the final conclusions.
+
+Figures in @fig-multi-socioecon and @fig-multi-dynamics examine how socio-demographic and economic factors jointly relate to passenger survival.
+
+The heatmap in @fig-multi-socioecon-1 combines age, passenger class and sex, revealing that the patterns observed in the earlier analyses (see @seq-qual-vs-surv) persist when these characteristics are considered simultaneously.
+
+-   Sex remains the strongest factor associated with survival, but the size of the difference between females and males varied considerably by passenger class. Adult females in 1st and 2nd class had very high survival rates, reaching $97.7\%–97.8\%$ in 1st class and $87.2\%–88.1\%$ in 2nd class for young adults and adults, respectively. Senior females in 1st class also maintained high survival ($87.5\%$).
+
+    In contrast, males experienced high mortality across all classes: 2nd-class adult male survival fell to $6.7\%$ ($11.0\%$ for young adults), while 1st-class senior male survival dropped to just $6.2\%$.
+
+<!-- -->
+
+-   The role of age varied considerably by passenger class. Male children in 1st and 2nd class had survival rates of $100.0\%$ and $91.7\%$, respectively, while 2nd-class female children reached a rate of $100.0\%$. The $50\%$ survival among 1st-class female children should be interpreted cautiously, as it's likely affected by the small number of observations.
+
+    In 3rd class, however, child survival was substantially lower, at $39.0\%$ for females and $33.3\%$ for males. This suggests that the survival advantage observed among children in the higher classes was not present to the same extend among those travelling in 3rd class.
+
+<!-- -->
+
+-   Third-class passengers consistently had lower survival rates. Even among adult females, survival in 3rd class was considerably lower, at $36.2\%$ for adults and $57.7\%$ for young adults. Survival among adult males in 3rd class remained low at $12.8\%-13.6\%$, while no 3rd-class male seniors in the dataset survived. The latter result should again be interpreted with caution due to the small sample size.
+
+```{r}
+#| label: fig-multi-socioecon
+#| fig-cap: 'Socio-demographic and economic factors associated with passenger survival.'
+#| fig-subcap: 
+#|      - 'Survival rates across passenger classes and age groups, faceted by sex.'
+#|      - 'Lifeboat passengers by class and sex, with percentages showing the sex composition within each class.'
+#|      - 'Boxplot of ticket fare (log10 scale) by class and survival status. The horizontal line represents the median, while the yellow diamond indicates the mean.'
+#| layout-ncol: 1
+#| fig-width: 8
+#| fig-height: 5
+
+draw_multivariate_heatmap()
+draw_lifeboat_barplot()
+draw_multivariate_boxplot(x_var = 'class', y_var = 'fare')
+
+```
+
+The bar plot in @fig-multi-socioecon-2 examines the sex and class composition of passengers who boarded the lifeboats (and, as established in @sec-dist-qual, survived).
+
+-   First-class passengers accounted for the largest absolute number of lifeboat occupants, with more that 200 people. This becomes particularly notable when compared with the overall class distribution (see @fig-qual-bar): 1st-class passengers represented only $24.7\%$ of the total populations, compared with $54.2\%$ for 3rd class. Among lifeboat occupants, however, 1st-class passengers accounted for $41\%$:
+
+    $$
+    \frac{\text{1st-class lifeboat occupants}}{\text{all lifeboat occupants}} \approx 41.02 \% \qquad \qquad \frac{\text{1st-class passengers}}{\text{all passengers}} \approx 24.68  \%
+    $$
+
+    This indicates a substantial overrepresentation of 1st-class passengers among those who reached the lifeboats. The pattern is consistent with historical layout of the ship, where 1st-class accommodation was generally located closer to the boat deck, reducing the distance passengers had to travel to reach the lifeboat stations.
+
+```{r}
+#| include: false
+
+df_temp <- titanic_clean %>%
+  summarise(
+    total_passengers = n(),
+    lifeboat_passengers = sum(!is.na(lifeboat) & lifeboat != 'NS'),
+    
+    first_total = sum(class == '1st', na.rm=TRUE),
+    first_lifeboat = sum(
+      class == '1st' & !is.na(lifeboat) & lifeboat != 'NS', na.rm = TRUE),
+    
+    prop1 = first_lifeboat / lifeboat_passengers * 100,
+    prop2 = first_total / total_passengers * 100,
+    
+    third_male_count = sum(class == '3rd' & sex == 'male'),
+    third_count = sum(class == '3rd', na.rm=TRUE),
+    prop3 = third_male_count / third_count * 100
+  )
+
+
+
+```
+
+-   Women were strongly overrepresented among lifeboat occupants in 1st and 2nd class. Females accounted for $68.7%$ of 1st-class and $77.4%$ of 2nd-class lifeboat occupants. This pattern is consistent with the historical application of *Birkenhead drill* (*women and children first*). The particularly high female representation in the upper classes may also reflect their easier access to the boat deck and the more orderly evacuation during the early stages of the sinking. Importantly, the Titanic did not begin with a single, clearly announced general evacuation, as the crew initially sought to avoid unnecessary panic. This meant that passengers depended heavily on information provided by crew members and on their ability to reach the boat deck.
+
+-   The gender gap was considerably smaller among 3rd-class lifeboat occupants. In 3rd-class, females accounted for $56.3%$ of lifeboat occupants, compared with $43.7%$ males. This relatively small difference should be interpreted in the context of the gender composition of 3rd-class, which was more male-dominated ($69.53\%$ male).
+
+    This result should also be considered in it's historical context. A common popular depiction of the Titanic disaster is that 3rd-class passengers were deliberately locked below deck and systematically prevented from reaching the lifeboats. This is, however, a myth rather than an accurate description of the evacuation. There was no simple, ship-wide policy of locking 3rd-class passengers below deck to prevent them from reaching the lifeboats. Their access was nevertheless more difficult in practice due to the ship's layout, their greater distance from the boat deck, unfamiliarity with the vessel, language barriers, and their reliance on crew members for directions. The experience of 3rd-class steward [John Edward Hart](https://www.encyclopedia-titanica.org/titanic-survivor/john-edward-hart.html), who helped guide passengers from the lower decks towards the boat deck during the evacuation, illustrates the important role that crew members played in helping 3rd-class passengers navigate the ship.
+
+The boxplot in @fig-multi-socioecon-2 illustrates the distribution of ticket fares ($\log_{10}$) across passenger classes and survival status.
+
+-   A clear price gap separates the three passenger classes, with 1st-class fares consistently exceeding those of the other two classes. While 1st-class fares ranged from approximately $£30$ to over $£100$, 2nd-class passengers generally paid between $£15$ and $£30$, whereas 3rd-class fares were concentrated between $£7$ and $£17$.
+
+-   Among 1st-class passengers, higher fares were associated with a clear survival advantage. Both the median fare and the mean fare, indicated by the yellow diamond, were noticeably higher among survivors than non-survivors.
+
+-   A slight positive shift in the mean fare can also be observed among 2nd-class survivors, although the difference is less pronounced. In 3rd class, however, this effect largely disappears. The distributions, medians, and mean fares of survivors and non-survivors are nearly identical, suggesting that paying a slightly higher fare within 3rd class did not provide a meaningful survival advantage.
+
+```{r}
+#| label: fig-multi-dynamics
+#| fig-cap: 'Impact of family structure and embarkation port on survival.'
+#| fig-subcap: 
+#|      - 'Survival rates across family sizes for female and male passengers.'
+#|      - 'Survival rates across passenger classes and embarkation ports, faceted by sex.'
+#| layout-ncol: 1
+#| fig-width: 8
+#| fig-height: 5
+
+draw_multivariate_family()
+draw_multivariate_embarked()
+```
+
+The figure in @fig-multi-dynamics-1 shows how family size and sex influenced survival rates.
+
+-   A similar pattern can be observed for both sexes: survival rates increased with family size, reaching their highest levels for families of $3$--$4$ members, before dropping sharply for larger families. However, it should be noted that the sample sizes for medium and large families ($>5$ members) are relatively small (@fig-qual-bar). Consequently, the fluctuations observed for larger families should be interpreted with caution, as the overall trend is more informative than the exact survival rates at individual family sizes.
+
+
+-   When compared with the baseline average survival rates by sex (@fig-survival-barplots), travelling with family was associated with a higher probability of survival. Among female passengers, the overall survival rate was $72.8\%$, compared with $73.4\%$ among those travelling alone and up to $86.2\%$ among those travelling in small families. For male passengers, the corresponding rates were $19.3\%$ overall, $16.4\%$ for those travelling alone, and up to $36.7\%$ for those travelling in small families.
+
+    The positive association between family travel and survival was particularly pronounced among male passengers, for whom travelling in a small family was associated with a notably higher survival rate than travelling alone.
+
+```{r}
+df_temp <- titanic_clean %>% 
+  summarise(
+    all_cherbourg = sum(embarked == 'C'),
+    first_class = sum(embarked == 'C' & class == '1st'),
+    second_class = sum(embarked == 'C' & class == '2nd'),
+    third_class = sum(embarked == 'C' & class == '3rd'),
+    
+    first_prop = first_class / all_cherbourg * 100,
+    second_prop = second_class / all_cherbourg * 100,
+    third_prop = third_class / all_cherbourg * 100,
+    
+    all_queenstown = sum(embarked == 'Q'),
+    third_queenstown = sum(embarked == 'Q' & class == '3rd'),
+    third_q_prop = third_queenstown / all_queenstown * 100,
+  )
+```
+
+The plot in @fig-multi-dynamics-2 illustrates the relationship between embarkation port, passenger class, sex, and survival.
+
+After accounting for sex and passenger class, the port of embarkation shows little independent association with survival:
+
+-   In 3rd class, passengers embarking at Cherbourg had slightly higher survival rates than those embarking at Southampton. However, this difference is likely related to differences in passenger composition across the ports. Among Cherbourg passengers, $52.22\%$ were in 1st-class, $10.37\%$ in 2nd-class, and $37.40\%$ in 3rd-class. In conjunction with the findings from @fig-multi-socioecon-1, this difference is therefore not unexpected.
+-   Queenstown passengers were concentrated almost entirely in 3rd-class ($91.87\%$). The extreme survival rates observed for 1st and 2nd-class are therefore likely the result of very small sample sizes rather than meaningful patterns.
+
+## EDA Summary
+
+The exploratory data analysis revealed several key patterns in passenger survival. Survival was strongly associated with sex and passenger class, which emerged as the most influential factors. Other features, such as fare, age, and family size, showed additional and often non-linear relationships with survival. In particular, smaller families ($2$--$4$ members) and younger age groups were associated with higher survival rates, although these effects varied across demographic groups.
+
+The analysis also highlighted critical technical considerations for subsequent dimensionality reduction via PCA and MDS. The numerical variables differ considerably in scale, with `fare` having a particularly wide range and some extreme values. Several numerical variables are also noticeably skewed. These differences make standardization and, where appropriate, feature transformations important, particularly for methods that are sensitive to scale. Outliers and small subgroup sizes should also be considered when interpreting the results.
+
+# MDS
+
+zrobić boxploty przed i po standaryzacji

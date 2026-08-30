@@ -1,0 +1,19 @@
+figcaption,
+.table-caption,
+caption {
+  text-align: center !important;
+}
+
+#tbl-raw-data-types table {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+#tbl-lifeboat-distr table {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+p {
+  text-align: justify;
+}
