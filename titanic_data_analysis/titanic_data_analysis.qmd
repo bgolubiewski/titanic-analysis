@@ -25,6 +25,12 @@ execute:
 library(tidyverse)
 library(scales)
 library(patchwork)
+library(factoextra)
+library(viridis)
+library(plotly)
+library(purrr)
+library(RColorBrewer)
+library(plot3D)
 
 # Tables
 library(knitr)
@@ -34,6 +40,7 @@ library(kableExtra)
 library(DataExplorer)
 library(rcompanion)
 library(corrplot)
+library(cluster)
 
 # File management
 library(here)
@@ -43,6 +50,7 @@ source(here("R", "01_import.R"))
 source(here("R", "02_cleaning.R"))
 source(here("R", "03_features.R"))
 source(here("R", "04_eda.R"))
+source(here("R", "05_dimensionality_reduction.R"))
 
 source(here("R", "functions.R"))
 source(here("R", "plots_tables.R"))
@@ -165,7 +173,7 @@ create_simple_table(df_tbl, c('Variable', 'NAs', 'Type', 'Levels'))
 
 ```
 
-# Exploratory Data Analysis
+# Exploratory Data Analysis {#sec-eda}
 
 Exploratory Data Analysis (EDA) is an essential step in understanding the patterns and key characteristics of the dataset. In this section we examine the data using summary statistics and visualizations to identify relationships between variables.
 
@@ -536,6 +544,167 @@ The exploratory data analysis revealed several key patterns in passenger surviva
 
 The analysis also highlighted critical technical considerations for subsequent dimensionality reduction via PCA and MDS. The numerical variables differ considerably in scale, with `fare` having a particularly wide range and some extreme values. Several numerical variables are also noticeably skewed. These differences make standardization and, where appropriate, feature transformations important, particularly for methods that are sensitive to scale. Outliers and small subgroup sizes should also be considered when interpreting the results.
 
-# MDS
+# Principal Component Analysis
 
-zrobić boxploty przed i po standaryzacji
+*Principal Component Analysis* (*PCA*) is a linear dimensionality reduction method, that transforms a set of potentially correlated variables into a smaller set of linearly uncorrelated principal components, preserving as much variance as possible.
+
+For this analysis, the continuous variables were selected (`fare`, `age`, `siblings_spouses`, `parents_children`). The `class` variable, although originally categorical, was also included by treating it as an ordinal variable and mapping its labels to their corresponding numerical values. This approach was considered appropriate because passenger class has a natural ordering, with the numerical values representing the relative position of each class. Furthermore, as shown in @sec-eda, passenger class was identified as one of the most important factors associated with survival.
+
+Because PCA is highly sensitive to variable scales, and features like `fare` exhibit great value dispersion (see @sec-quant-boxplot), all variables were standardized prior to the analysis.
+
+```{r}
+#| label: fig-pca-1
+#| fig-cap: 'Scree plot and feature loadings from the Principal Component Analysis.'
+#| fig-subcap: 
+#|   - 'Explained variance by principal component. Bars show the variance explained by individual components, while the dashed line represents the cumulative explained variance.'
+#|   - 'Heatmap of variable contributions to the principal components.'
+#| layout-ncol: 2
+#| fig-width: 9
+#| fig-height: 7
+
+draw_scree_plot()
+draw_pca_heatmap()
+
+```
+
+The scree plot @fig-pca-1-1 shows that the first three principal components account for approximately $80\%$ of the total variance. As detailed in @fig-pca-1-2, the loadings matrix reveals how each original feature contributes to these new dimensions, with absolute values closer to 1 indicate a stronger relationship.
+
+Primarily associated with `fare` and `class`, `PC1` effectively captures passenger wealth and accommodation (with a contribution from `age`). `PC2` is dominated by variables describing family structure (`siblings_spouses` and `parents_children`), isolating family group size from economic status.
+
+Although three components are required to capture $80\%$ of the variance, using the first two components (`PC1`, `PC2`) allows us to visually inspect how socio-economic status and family size separate survivors from non-survivors.
+
+```{r}
+#| label: fig-pca-2
+#| fig-cap: 'Passenger distribution in the PC1-PC2 space by survival.'
+#| fig-subcap: 
+#|   - '2D scatter plot of passengers with 95% confidence ellipses by survival.'
+#|   - 'PCA biplot showing passengers groups with original variable vectors.'
+#| layout-ncol: 2
+#| fig-width: 9
+#| fig-height: 7
+
+draw_pca_scatterplot()
+draw_pca_biplot()
+```
+
+To assess the accuracy of the PCA procedure, plots were generated (@fig-pca-2) with observations coloured according to the `survived` variable. Importantly, this variable was not included in the PCA calculations and was only used for visual interpretation.
+
+The scatter plot with $95\%$ confidence ellipses (@fig-pca-2-1) illustrates the degree of separation between survivors and non-survivors in the spaced defined by the first two principal components, while @fig-pca-2-2 presents a biplot showing the original variable vectors in the PCA space.
+
+- A noticeable rightward shift can be observed for the surviving group. Since positive values of `PC1` are associated with age, higher ticket fares, and higher passenger class (i.e., lower numerical values of `class`, as indicated by the direction of the `class` vector), this shift suggests that socio-economic status contributes to the separation of survivors along the first principal component. This is consistent with the findings of the earlier exploratory data analysis.
+
+- Both groups show a similar spread along the `PC2` axis, with their ellipse centres being relatively close vertically. This suggests that family size does not clearly distinguish survivors from non-survivors using through a linear relationship along the second principal component. This is consistent with the EDA results (see @fig-multi-dynamics-1), which indicate that the relationship between family size and survival is not linear.
+
+The considerable overlap between the two $95\%$ confidence ellipses indicates that the first two principal components do not provide a clear linear separation between the two groups. Thus, while $PC_1$ captures some variation associated with survival, the substantial overlap suggests that the continuous variables represented in the PCA space are insufficient to fully distinguish survivors from non-survivors. This motivates further analysis using methods such as MDS and non-linear classification models.
+
+# Multidimensional Scaling
+
+## Method and Assesment of Accuracy
+
+Multidimensional Scaling (MDS) is a dimensionality reduction technique that aims to measure the distance between variables and represent them in a lower-dimensional space while preserving their pairwise dissimilarities as accurately as possible. 
+
+Not all variables were included in the MDS procedure. The analysis was conducted without `family_size`, as it duplicates data of `parents_children` and `siblings_spouses`; `is_child`, as it duplicates information contained in `age`; and `lifeboat`, as it directly determines survival). The following variables were also excluded from the calculations but were used in selected plots in this section: `survived`, `age_group`, `family_size_group`. The categorical versions of quantitative variables were used to facilitate plots analysis.
+
+```{r}
+#| label: fig-shepard
+#| fig-cap: 'Shepard diagrams for different values of the target dimensionality $k$ in multidimensional scaling. The red line represents the ideal $y=x$ fit.'
+#| echo: false
+
+get_shepard_diagram()
+```
+
+In this analysis, Gower’s distance was used to calculate dissimilarities between observations, as it is suitable for datasets containing mixed types of variables, including numerical and categorical variables. The resulting dissimilarity matrix was then used to perform MDS and represent the observations in two- and three-dimensional spaces. Observations that are closer together in the MDS space are more similar with respect to the analyzed characteristics, whereas larger distances indicate greater dissimilarity.
+
+The quality of the fit was assessed using the STRESS measure, which defines the degree of "distortion" of distances after the MDS procedure:
+
+$$
+STRESS = \sqrt{\cfrac{\sum(d_{ij} - \hat d_{ij})^2}{\sum d_{ij}^2}}
+$$
+Where:
+
+- $d_{ij}$ --- the original distances calculated using the `daisy()` function,
+- $\hat d_{ij}$ --- the Euclidean distances in the reduced-dimensional space.
+
+
+The *STRESS* value ranges from 0 to 1, with lower values indicating a better representation of the data structure.
+
+Solutions with two and three dimensions was compared. A visual assessment of the fit is provided by Shepard diagrams (@fig-shepard), which show the relationship between the original distances and their mapped counterparts. The closer the points are to the diagonal line ($y=x$), the better the structure of the data has been preserved. Based on the *STRESS* values and the distribution of points in the plots, it can be concluded that reducing the data to three dimensions provides a better representation than reducing it to two dimensions.
+
+## MDS Visualization by Survival
+
+@fig-mds-survival presents the results of multidimensional scaling to two- and three-dimensional spaces. In both cases, distinct groups of observations can be identified. When the points are coloured according to survival status, these groups appear to be separated to some extent by survival. The following discussion focuses on the two-dimensional representation, as it is less accurate but easier to interpret and describe.
+
+```{r}
+#| label: fig-mds-survival
+#| fig-cap: 'Representation of MDS results in two- and three-dimensional spaces, coloured by passenger survival.'
+#| fig-subcap: 
+#|      - 'Representation of MDS results in two-dimensional space.'
+#|      - 'Representation of MDS results in three-dimensional space.'
+#| layout-ncol: 2
+#| fig-width: 9
+#| fig-height: 7
+
+draw_mds_2d('survived')
+draw_mds_3d_static()
+
+```
+
+Among the survivors, three distinct clusters can be identified in which survivors predominate. These clusters also contain some observations corresponding to passengers who did not survive the disaster; however, these are isolated cases and may therefore be considered outliers.
+
+Among the passengers who did not survive, approximately six clusters can be identified. However, these clusters are less distinct, as they contain a substantial number of observations corresponding to survivors.
+
+These results suggest that certain passenger profiles were associated with a higher probability of survival. At the same time, the composition of the victim clusters suggests that non-survival was not as clearly associated with any specific passenger profile.
+
+## MDS Visualization by Passenger Characteristics
+
+In this section, we further investigate the clusters identified through MDS. The observations are coloured according to selected variables to asses whether the identified clusters correspond to different categories or values of the passenger characteristics.
+
+The results are presented in the interactive three-dimensional plot (@fig-mds-3d) and the two-dimensional plots (@fig-mds-2d).
+
+```{r}
+#| label: fig-mds-3d
+#| fig-cap: 'Interactive three-dimensional representation of MDS results, coloured by selected variables.'
+
+draw_mds_3d_plotly()
+
+```
+
+MDS captured the same key relationships associated with survival as those identified in the EDA (@sec-eda). The following description focuses on the two-dimensional plots.
+
+- Sex is the main factor separating the clusters. The upper clusters consist of women, while the lower consist of men. This is a perfect separation, as no observations from the two categories overlap. The second most influential factor is passenger class, and consequently fare. Observations from different classes overlap to some extend, particulary those 2nd- and 3rd-classes. The cluster associated with the 1st-class is the largest (as indicated by the $95\%$ confidence ellipse size), which is likely related to the wide range of ticket fares within this class. 
+
+  It should also be emphasised that `survived` variable was not included in the MDS calculations and therefore did not influence the formation of clusters. In contrast, `age` and family size variables were included, although they do not appear to define the clusters as clearly. Nevertheless, these variables provide valuable additional context for interpreting the results.
+
+- The MDS plots confirm several conclusions from the EDA. The centers of the $95\%$ confidence ellipses for non-survivors are aligned with the clusters of male passengers across all classes, with more survivors in the 1st-class. Most of female casualties are concentrated in the 3rd-class cluster.
+
+- Age groups are relatively evenly distributed across passenger classes, with the exception of children. Most observations belonging to the child group are located towards the upper part of the plot, corresponding primarily to the 2nd- and 3rd-classes. This group also appears to have a relatively high fatality rate, as most of these observations are coloured red in the survival plot. This further supports the lower survival rate observed for children in @fig-multi-socioecon-1.
+
+- Family-size categories show a similar distribution, with some exceptions for medium and large families. The latter occur only within the 3rd-class clusters and are associated with non-survival. Medium-sized families also include some observations from the 1st- and 2nd-classes, where survival appears more likely than among passengers from the 3rd-class.
+
+```{r}
+#| label: fig-mds-2d
+#| fig-cap: 'Two-dimensional representation of MDS results, coloured by selected variables.'
+#| fig-width: 17
+#| fig-height: 17
+
+p1 <- draw_mds_2d("survived", show_ellipse = TRUE)
+p2 <- draw_mds_2d("class", show_ellipse = TRUE)
+p3 <- draw_mds_2d("sex", show_ellipse = TRUE)
+
+p4 <- draw_mds_2d("fare")
+p5 <- draw_mds_2d("age_group")
+
+p6 <- draw_mds_2d("family_size_group")
+
+wrap_plots(c(p1, p2, p3, p4, p5, p6), ncol = 2)
+
+```
+
+## MDS Summary
+
+MDS revealed a clear structure in the dataset, with observations primarily separated along two dimensions. The strongest separation is observed by sex, with male and female passengers forming distinct, non-overlapping groups. Passenger class and fare provide a further, although less pronounced, gradient within these groups.
+
+The structure revealed by MDS is consistent with the key findings from the EDA. Higher survival rates are concentrated among female and first-class passengers, whereas clusters with lower survival rates are predominantly composed of male passengers from the second and third classes. Large families are also associated with lower survival rates.
+
+The observed structure also suggests that the relationships between passenger characteristics and survival may be non-linear. This makes tree-based classification methods, such as Random Forest and XGBoost, promising candidates for the predictive stage, as they can capture non-linear relationships and interactions between predictors without requiring them to be specified explicitly. Furthermore, the elongated, non-spherical shape of the clusters indicates that density-based or hierarchical clustering will perform significantly better than $K$-Means.
+
