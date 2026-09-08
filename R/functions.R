@@ -53,3 +53,18 @@ get_label <- function(var) {
     unname(label)
   }
 }
+
+# loads the Shepard diagram or generates and saves it if it does not exist
+get_shepard_diagram <- function() {
+  img_path <- here('resources', 'shepard_diagram.png')
+  
+  if (!file.exists(img_path)) {
+    p1 <- draw_shepard_plot(k = 2)
+    p2 <- draw_shepard_plot(k = 3)
+    
+    combined_plot <- p1 + p2
+    ggsave(img_path, combined_plot, width = 10, height = 5, dpi = 300)
+  }
+  
+  knitr::include_graphics(img_path)
+}
