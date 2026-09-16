@@ -68,3 +68,38 @@ get_shepard_diagram <- function() {
   
   knitr::include_graphics(img_path)
 }
+
+get_dendrogram_plot <- function() {
+  img_path <- here('resources', 'agnes_dendrograms_1.png')
+  
+  if (!file.exists(img_path)) {
+    p1 <- draw_agnes_dendrogram(fit = agnes_fit, k = 2)
+    p2 <- draw_agnes_dendrogram(fit = agnes_fit, k = 6)
+    
+    combined_plot <- p1 + p2
+    ggsave(img_path, combined_plot, width = 10, height = 5, dpi = 300)
+  }
+  
+  knitr::include_graphics(img_path)
+}
+
+
+# helper function, returns a df row with selected metrics values
+evaluate_clustering <- function(cluster_vector, true_labels, method_name) {
+  
+  tab <- table(Cluster = cluster_vector, Actual = true_labels)
+  mapping <- ifelse(tab[, 'Yes'] > tab[, 'No'], 'Yes', 'No')
+  
+  pred <- factor(mapping[as.character(cluster_vector)],
+                 levels = levels(true_labels))
+  
+  cm <- confusionMatrix(pred, true_labels, positive = 'Yes')
+  
+  data.frame(
+    Method = method_name,
+    ARI = round(adjustedRandIndex(cluster_vector, true_labels), 4),
+    Accuracy = round(unname(cm$overall['Accuracy']), 4),
+    Sensitivity = round(unname(cm$byClass['Sensitivity']), 4),
+    Specificity = round(unname(cm$byClass['Specificity']), 4)
+  )
+}  

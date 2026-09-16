@@ -21,6 +21,16 @@ execute:
 #| label: setup
 #| output: false
 
+# Data analysis
+library(DataExplorer)
+library(rcompanion)
+library(corrplot)
+
+# Modeling
+library(caret)
+library(cluster)
+library(mclust)
+
 # Data manipulation and visualization
 library(tidyverse)
 library(scales)
@@ -36,12 +46,6 @@ library(plot3D)
 library(knitr)
 library(kableExtra)
 
-# Data analysis
-library(DataExplorer)
-library(rcompanion)
-library(corrplot)
-library(cluster)
-
 # File management
 library(here)
 
@@ -51,6 +55,11 @@ source(here("R", "02_cleaning.R"))
 source(here("R", "03_features.R"))
 source(here("R", "04_eda.R"))
 source(here("R", "05_dimensionality_reduction.R"))
+
+source(here("R", "Modeling", "01_split_and_prep.R"))
+source(here("R", "Modeling", "02_feature_engineering_dim.R"))
+source(here("R", "Modeling", "03_pam.R"))
+source(here("R", "Modeling", "04_agnes.R"))
 
 source(here("R", "functions.R"))
 source(here("R", "plots_tables.R"))
@@ -508,7 +517,6 @@ The figure in @fig-multi-dynamics-1 shows how family size and sex influenced sur
 
 -   A similar pattern can be observed for both sexes: survival rates increased with family size, reaching their highest levels for families of $3$--$4$ members, before dropping sharply for larger families. However, it should be noted that the sample sizes for medium and large families ($>5$ members) are relatively small (@fig-qual-bar). Consequently, the fluctuations observed for larger families should be interpreted with caution, as the overall trend is more informative than the exact survival rates at individual family sizes.
 
-
 -   When compared with the baseline average survival rates by sex (@fig-survival-barplots), travelling with family was associated with a higher probability of survival. Among female passengers, the overall survival rate was $72.8\%$, compared with $73.4\%$ among those travelling alone and up to $86.2\%$ among those travelling in small families. For male passengers, the corresponding rates were $19.3\%$ overall, $16.4\%$ for those travelling alone, and up to $36.7\%$ for those travelling in small families.
 
     The positive association between family travel and survival was particularly pronounced among male passengers, for whom travelling in a small family was associated with a notably higher survival rate than travelling alone.
@@ -544,7 +552,7 @@ The exploratory data analysis revealed several key patterns in passenger surviva
 
 The analysis also highlighted critical technical considerations for subsequent dimensionality reduction via PCA and MDS. The numerical variables differ considerably in scale, with `fare` having a particularly wide range and some extreme values. Several numerical variables are also noticeably skewed. These differences make standardization and, where appropriate, feature transformations important, particularly for methods that are sensitive to scale. Outliers and small subgroup sizes should also be considered when interpreting the results.
 
-# Principal Component Analysis
+# Principal Component Analysis {#sec-pca}
 
 *Principal Component Analysis* (*PCA*) is a linear dimensionality reduction method, that transforms a set of potentially correlated variables into a smaller set of linearly uncorrelated principal components, preserving as much variance as possible.
 
@@ -583,7 +591,7 @@ Although three components are required to capture $80\%$ of the variance, using 
 #| fig-width: 9
 #| fig-height: 7
 
-draw_pca_scatterplot()
+draw_pca_scatterplot(var_explained = var_explained)
 draw_pca_biplot()
 ```
 
@@ -591,9 +599,9 @@ To assess the accuracy of the PCA procedure, plots were generated (@fig-pca-2) w
 
 The scatter plot with $95\%$ confidence ellipses (@fig-pca-2-1) illustrates the degree of separation between survivors and non-survivors in the spaced defined by the first two principal components, while @fig-pca-2-2 presents a biplot showing the original variable vectors in the PCA space.
 
-- A noticeable rightward shift can be observed for the surviving group. Since positive values of `PC1` are associated with age, higher ticket fares, and higher passenger class (i.e., lower numerical values of `class`, as indicated by the direction of the `class` vector), this shift suggests that socio-economic status contributes to the separation of survivors along the first principal component. This is consistent with the findings of the earlier exploratory data analysis.
+-   A noticeable rightward shift can be observed for the surviving group. Since positive values of `PC1` are associated with age, higher ticket fares, and higher passenger class (i.e., lower numerical values of `class`, as indicated by the direction of the `class` vector), this shift suggests that socio-economic status contributes to the separation of survivors along the first principal component. This is consistent with the findings of the earlier exploratory data analysis.
 
-- Both groups show a similar spread along the `PC2` axis, with their ellipse centres being relatively close vertically. This suggests that family size does not clearly distinguish survivors from non-survivors using through a linear relationship along the second principal component. This is consistent with the EDA results (see @fig-multi-dynamics-1), which indicate that the relationship between family size and survival is not linear.
+-   Both groups show a similar spread along the `PC2` axis, with their ellipse centres being relatively close vertically. This suggests that family size does not clearly distinguish survivors from non-survivors using through a linear relationship along the second principal component. This is consistent with the EDA results (see @fig-multi-dynamics-1), which indicate that the relationship between family size and survival is not linear.
 
 The considerable overlap between the two $95\%$ confidence ellipses indicates that the first two principal components do not provide a clear linear separation between the two groups. Thus, while $PC_1$ captures some variation associated with survival, the substantial overlap suggests that the continuous variables represented in the PCA space are insufficient to fully distinguish survivors from non-survivors. This motivates further analysis using methods such as MDS and non-linear classification models.
 
@@ -601,7 +609,7 @@ The considerable overlap between the two $95\%$ confidence ellipses indicates th
 
 ## Method and Assesment of Accuracy
 
-Multidimensional Scaling (MDS) is a dimensionality reduction technique that aims to measure the distance between variables and represent them in a lower-dimensional space while preserving their pairwise dissimilarities as accurately as possible. 
+Multidimensional Scaling (MDS) is a dimensionality reduction technique that aims to measure the distance between variables and represent them in a lower-dimensional space while preserving their pairwise dissimilarities as accurately as possible.
 
 Not all variables were included in the MDS procedure. The analysis was conducted without `family_size`, as it duplicates data of `parents_children` and `siblings_spouses`; `is_child`, as it duplicates information contained in `age`; and `lifeboat`, as it directly determines survival). The following variables were also excluded from the calculations but were used in selected plots in this section: `survived`, `age_group`, `family_size_group`. The categorical versions of quantitative variables were used to facilitate plots analysis.
 
@@ -619,12 +627,10 @@ The quality of the fit was assessed using the STRESS measure, which defines the 
 
 $$
 STRESS = \sqrt{\cfrac{\sum(d_{ij} - \hat d_{ij})^2}{\sum d_{ij}^2}}
-$$
-Where:
+$$ Where:
 
-- $d_{ij}$ --- the original distances calculated using the `daisy()` function,
-- $\hat d_{ij}$ --- the Euclidean distances in the reduced-dimensional space.
-
+-   $d_{ij}$ --- the original distances calculated using the `daisy()` function,
+-   $\hat d_{ij}$ --- the Euclidean distances in the reduced-dimensional space.
 
 The *STRESS* value ranges from 0 to 1, with lower values indicating a better representation of the data structure.
 
@@ -671,21 +677,21 @@ draw_mds_3d_plotly()
 
 MDS captured the same key relationships associated with survival as those identified in the EDA (@sec-eda). The following description focuses on the two-dimensional plots.
 
-- Sex is the main factor separating the clusters. The upper clusters consist of women, while the lower consist of men. This is a perfect separation, as no observations from the two categories overlap. The second most influential factor is passenger class, and consequently fare. Observations from different classes overlap to some extend, particulary those 2nd- and 3rd-classes. The cluster associated with the 1st-class is the largest (as indicated by the $95\%$ confidence ellipse size), which is likely related to the wide range of ticket fares within this class. 
+-   Sex is the main factor separating the clusters. The upper clusters consist of women, while the lower consist of men. This is a perfect separation, as no observations from the two categories overlap. The second most influential factor is passenger class, and consequently fare. Observations from different classes overlap to some extend, particulary those 2nd- and 3rd-classes. The cluster associated with the 1st-class is the largest (as indicated by the $95\%$ confidence ellipse size), which is likely related to the wide range of ticket fares within this class.
 
-  It should also be emphasised that `survived` variable was not included in the MDS calculations and therefore did not influence the formation of clusters. In contrast, `age` and family size variables were included, although they do not appear to define the clusters as clearly. Nevertheless, these variables provide valuable additional context for interpreting the results.
+    It should also be emphasised that `survived` variable was not included in the MDS calculations and therefore did not influence the formation of clusters. In contrast, `age` and family size variables were included, although they do not appear to define the clusters as clearly. Nevertheless, these variables provide valuable additional context for interpreting the results.
 
-- The MDS plots confirm several conclusions from the EDA. The centers of the $95\%$ confidence ellipses for non-survivors are aligned with the clusters of male passengers across all classes, with more survivors in the 1st-class. Most of female casualties are concentrated in the 3rd-class cluster.
+-   The MDS plots confirm several conclusions from the EDA. The centers of the $95\%$ confidence ellipses for non-survivors are aligned with the clusters of male passengers across all classes, with more survivors in the 1st-class. Most of female casualties are concentrated in the 3rd-class cluster.
 
-- Age groups are relatively evenly distributed across passenger classes, with the exception of children. Most observations belonging to the child group are located towards the upper part of the plot, corresponding primarily to the 2nd- and 3rd-classes. This group also appears to have a relatively high fatality rate, as most of these observations are coloured red in the survival plot. This further supports the lower survival rate observed for children in @fig-multi-socioecon-1.
+-   Age groups are relatively evenly distributed across passenger classes, with the exception of children. Most observations belonging to the child group are located towards the upper part of the plot, corresponding primarily to the 2nd- and 3rd-classes. This group also appears to have a relatively high fatality rate, as most of these observations are coloured red in the survival plot. This further supports the lower survival rate observed for children in @fig-multi-socioecon-1.
 
-- Family-size categories show a similar distribution, with some exceptions for medium and large families. The latter occur only within the 3rd-class clusters and are associated with non-survival. Medium-sized families also include some observations from the 1st- and 2nd-classes, where survival appears more likely than among passengers from the 3rd-class.
+-   Family-size categories show a similar distribution, with some exceptions for medium and large families. The latter occur only within the 3rd-class clusters and are associated with non-survival. Medium-sized families also include some observations from the 1st- and 2nd-classes, where survival appears more likely than among passengers from the 3rd-class.
 
 ```{r}
 #| label: fig-mds-2d
 #| fig-cap: 'Two-dimensional representation of MDS results, coloured by selected variables.'
-#| fig-width: 17
-#| fig-height: 17
+#| fig-width: 14
+#| fig-height: 12
 
 p1 <- draw_mds_2d("survived", show_ellipse = TRUE)
 p2 <- draw_mds_2d("class", show_ellipse = TRUE)
@@ -708,3 +714,255 @@ The structure revealed by MDS is consistent with the key findings from the EDA. 
 
 The observed structure also suggests that the relationships between passenger characteristics and survival may be non-linear. This makes tree-based classification methods, such as Random Forest and XGBoost, promising candidates for the predictive stage, as they can capture non-linear relationships and interactions between predictors without requiring them to be specified explicitly. Furthermore, the elongated, non-spherical shape of the clusters indicates that density-based or hierarchical clustering will perform significantly better than $K$-Means.
 
+# Modeling
+
+Having explored the main patterns in the data, we now move on to the modelling stage. The dataset has been split into the training and test sets using a $80/20$ stratified (on `survived`) split, with a fixed seed of `12578891` to ensure that the results are repetitive.
+
+Before any calculations, some variables were also removed. Most importantly, `lifeboat` has been excluded, because it determines `survival`. To reduce collinearity, the two variables `parents_children` and `siblings_spouses` were removed in favour of the single `family_size` feature. We also leave out categorical variables such as `is_child`, `age_group`, and `family_size_group`, as they largely duplicate information contained in the corresponding numerical variables. This also gives the models access to the original numerical information rather than its simplified qualitative versions.
+
+The modeling section covers both unsupervised and supervised approaches: \* Unsupervised Learning: Clustering algorithms (*AGNES* and *PAM*) are used to assess whether natural passenger groupings align with survival patterns without using target labels. \* Supervised Learning: Classification algorithms are trained to predict individual survival outcomes based on passenger attributes.
+
+To obtain more reliable and unbiased performance estimates, we use *10-fold cross-validation* on *ROC-AUC* metrics. The test set remains entirely untouched during this phase and is reserved exclusively for the final evaluation of the champion model to verify its capability. This reduces the influence of any single random split of the training data and provides a more stable basis for comparing the different modelling approaches.
+
+At the same time, we examine whether dimensionality reduction can provide useful additional information. *PCA* and *Gower-based MDS* are used to create two-dimensional representations of the training data. These new dimensions are then added to the original feature set, allowing us to compare the baseline models with versions enriched by *PCA* or *MDS* features.
+
+To confirm that the $80\%$ training subset preserves the structural and geometric properties identified during EDA, we first inspect its projections.
+
+```{r}
+#| label: fig-pca-mds-geom
+#| fig-cap: 'Unsupervised PCA projection and Gower distance-based MDS. Calculated using the training set (80% of data).'
+#| fig-subcap: 
+#|   - "PCA projection (quantitative variables and transformed `class`)"
+#|   - "2D MDS projection (Gower distance for mixed-type data)"
+#| layout-ncol: 2
+#| fig-width: 6
+#| fig-height: 5
+
+draw_pca_scatterplot(df = pca_train_extended,
+                     var_explained = var_explained_train)
+
+draw_mds_2d(var = 'survived', df = mds_train_extended, show_ellipse = TRUE)
+
+```
+
+The visual analysis of @fig-pca-mds-geom confirms that the cluster structure remains stable and is broadly consistent the results obtained for the full dataset (see @fig-pca-2-1 and @fig-mds-survival-1). We continue to observe a separation between groups with higher and lower survival probabilities, driven primarily by the combined effects of sex and passenger class.
+
+It is also worth noting a technical difference in the *PCA* results. On the training set, the first two principal components jointly explain approximately $77\%$ of the total variance, compared with around $68\%$ for the full dataset. This difference does not indicate a change in the data structure following the train-test split. Rather, it results from the feature selection conducted specifically for the modelling stage. For the full dataset calculations were done with both `parents_children` and `siblings_spouses`, while for the training set, only `family_size` was used. Thanks to that, *PCA* was able to capture a larger proportion of the remaining variance in its first two components.
+
+## Clustering
+
+### Partitioning Around Medoids (PAM)
+
+The *Partitioning Around Medoids* (*PAM*) algorithm is a clustering method used to divide a dataset into a predefined number of distinct groups based on the distances between observations. Unlike methods like *k-means*, which represent clusters using centroids, *PAM* uses medoids --- actual observations from the dataset that serve as representative members of their respective cluster.
+
+#### Full feature space
+
+```{r}
+#| label: fig-pam-sil
+#| fig-cap: 'The Silhouette coefficient value for different K (number of clusters) values.'
+
+draw_silhouette(df = sil_values_pam, best_k = best_k_pam)
+```
+
+The first step was to determine the optimal number of clusters. This was done using the *Silhouette Method*, which measures how well each observation fits within its assigned cluster compared with the nearest neighbouring cluster. The silhouette coefficient ranges from -1 to 1, with higher values indicating better-separated and more cohesive clusters. As shown in in @fig-pam-sil, the highest mean silhouette coefficient was obtained for $K = 2$, making it the preferred choice, especially as this number of clusters correspond with two values of the `survived` variable. The second-highest values was obtained for $K=6$, although it was slightly lower.
+
+```{r}
+#| label: tbl-pam-6
+#| tbl-cap: 'Description of dominant type of a passenger in a cluster created by the PAM algorithm (K = 6).'
+#| cap-location: bottom
+
+create_simple_table(cluster_profiles_k6_pam, c('Cluster', 'Count', 'Rate of Survival',
+                                           'Dominant Sex', 'Dominant Class', 'Main Embarked',
+                                           'Median of Age', 'Median of Fare', 'Median of Family Size'))
+```
+
+@fig-pam-2-6 shows the *PAM* clusters assignments projected onto the 2D *MDS* space. Comparing this result with the feature-coloured MDS plots in @fig-mds-2d shows that, for $K = 2$, the main and only distinctions between the two clusters is sex.
+
+Using $K = 6$ produces a more detailed segmentation of the passengers (@tbl-pam-6). The resulting clusters appear to be differentiated mainly by sex and passenger class (and naturally fare). Notably, despite the target variable `survived` being excluded from the distance calculation, the resulting clusters nevertheless show clear differences in survival rates. This is particularly visible in clusters 1 and 6 --- cluster 1 (predominantly 3rd-class males) has a low survival rate of $13\%$, while cluster 6  (predominantly 2nd-class females) reaches a rate of $90.8\%$. Thus, even though survival was not included in the clustering procedure, the resulting passenger profiles capture characteristics that are strongly associated with survival.
+
+```{r}
+#| label: fig-pam-2-6
+#| fig-cap: 'Visualisation of clusters created by the PAM algorithm. Plotted on the dimensions created by the MDS.'
+#| fig-width: 12
+#| fig-height: 5
+
+p1 <- draw_mds_2d(var = 'cluster_pam_k2', df = mds_train_extended, custom_title = "PAM Clusters (k = 2)") + labs(color = "Cluster", fill = "Cluster")
+p2 <- draw_mds_2d(var = 'cluster_pam_k6', df = mds_train_extended, custom_title = "PAM Clusters (k = 6)") + labs(color = "Cluster", fill = "Cluster")
+
+p1 + p2 &
+  theme(legend.position = 'bottom')
+```
+
+#### Reduced feature space (PCA & MDS)
+
+To asses how dimensionality reduction affects *PAM* clustering, the algorithm was applied directly to the two-dimensional spaces generated by *MDS* and *PCA*. The resulting partition are shown in @fig-pam-pca-mds. 
+
+In the *MDS* projection, *PAM* produces the same sex-driven clustering pattern observed in the full Gower space. This is expected because *MDS* was constructed from the same pairwise Gower distances used by *PAM*, preserving the main structure of the original dissimilarity space.
+
+Conversly, clustering in the *PCA* space produces a less distinct partition. Standard *PCA* relies on linear relationships among continuous variables, resulting in a denser observations cloud where *PAM* fails to establish clear class boundaries.
+
+```{r}
+#| label: fig-pam-pca-mds
+#| fig-cap: 'Comparison of actual survival status against PAM clustering outcomes across low-dimensional projections.'
+#| layout-nrow: 2
+#| fig-width: 11
+#| fig-height: 8
+
+p1 <- draw_mds_2d(var = 'survived', df = mds_train_extended, custom_title = 'Actual Survival (MDS Space)')
+p2 <- draw_mds_2d(var = 'cluster_pam_mds', df = mds_train_extended, custom_title = 'PAM Clusters (2D MDS)') + labs(color = "Cluster", fill = "Cluster")
+
+p3 <- draw_pca_scatterplot(df = pca_train_extended, target_col = 'survived', var_explained = var_explained_train, custom_title = 'Actual Survival (PCA Space)')
+p4 <- draw_pca_scatterplot(df = pca_train_extended, target_col = 'cluster_pam', var_explained = var_explained_train, custom_title = 'PAM Clusters (2D PCA)') + labs(color = "Cluster", fill = "Cluster")
+
+(p1 + p2) / (p3 + p4)
+
+```
+
+
+#### PAM Results
+
+To compare the *PAM* configurations with the actual `surived` labels, four clustering setups were evaluated using the metrics in @tbl-pam-metrics. Cluster agreement with the true labels is measured using the *Adjusted Rand Index* (*ARI*), where 0 indicates chance-level agreement and 1 indicates a perfect match. Traditional classification metrics (*Accuracy, Sensitivity, Specificity*) are calculated after assigning each cluster to either `Yes` or `No` survival value based on majority.
+ 
+```{r}
+#| label: tbl-pam-metrics
+#| tbl-cap: 'Performance metrics for PAM clustering configurations benchmarked against actual survival labels.'
+#| cap-location: bottom
+
+create_simple_table(pam_metrics_summary, colnames = c('Method',
+                                                      'ARI',
+                                                      'Accuracy',
+                                                      'Sensitivity',
+                                                      'Specificity'))
+```
+
+The findings are:
+
+- *PAM* in the 2D *MDS* space gives the same performance as *PAM* using the full Gower space ($ARI=0.3038$, $Accuracy=77.70\%$), suggesting that the two-dimensional MDS representation retains the main structure relevant to this clustering.
+
+- *PAM* performs substantially worse in the *PCA* space ($ARI=0.1015$, $Accuracy=66.60\%$), with particularly low sensitivity ($44.97\%$). This indicates that the *PCA* representation is less suitable for this clustering task.
+
+- The six-cluster solution has a lower *ARI* ($0.1232$) but similar accuracy ($77.51\%$) and high specificity ($93.42\%$). The additional clusters therefore provide a more detailed partition, although this does not translate into stronger overall agreement with the survival labels.
+
+Overall, within the *PAM* configurations considered here, the Gower-based representation performs better than *PCA*, while the 2D *MDS* representation retains the clustering structure of the full Gower space. These results provide a useful baseline for comparison with the *AGNES* results presented next.
+
+### Agglomerative Nesting (AGNES)
+
+The *Agglomerative Nesting* (*AGNES*) algorithm is a hierarchical clustering method used to organize a dataset into a hierarchy of nested groups based on distances between observations. Unlike methods such as *k-means* or *PAM*, which divide the data directly into a predefined number of clusters, *AGNES* starts by treating each observation as a separate cluster and then progressively merges the most similar clusters until a single one remains. The resulting hierarchy is represented as a dendrogram, which can be cut at a suitable level to obtain the desired number of clusters.
+
+#### Full feature space
+
+```{r}
+#| label: fig-agnes-tuning
+#| fig-cap: 'AGNES parameter selection'
+#| fig-subcap: 
+#|      - 'Comparison of linkage methods by Agglomerative Coefficient value.'
+#|      - 'The Silhouette coefficient value for different K (number of clusters) values.'
+#| layout-ncol: 2
+
+draw_agnes_method_comparison()
+draw_silhouette(df = sil_values_agnes, best_k = best_k_agnes, custom_title = 'AGNES, Silhouette Coefficient (Ward Linkage)')
+```
+
+The process of merging clusters can be performed using several different linkage methods. @fig-agnes-tuning presents the process of tuning the algorithm to the analysed dataset. The quality of the linkage methods was assessed using the *Agglomerative Coefficient* (*AC*) --- a measure of how well the hierarchical clustering structure separates the observations, where higher values indicate better clustering quality. The *Silhouette* method indicated 6 and 2 as the optimal numbers of clusters ($K$).
+
+```{r}
+#| label: fig-agnes-dendrogram-2-6
+#| fig-cap: 'AGNES parameter selection'
+#| echo: false
+
+get_dendrogram_plot()
+```
+
+@fig-agnes-dendrogram-2-6 shows the hierarchical clustering structure produced by *AGNES* using Ward's linkage method, with the trees coloured according to the resulting cluster assignments for $K = 2$ and $K = 6$. In a dendrogram, Height represents the dissimilarity between clusters at the point of their merge. The large increase in Height at the first split (Height $\approx 6.5$) indicates a substantial difference between the two resulting branches, suggesting a clear separation of the dataset into two major clusters. Those largely correspond to sex (see @fig-agnes-2-6). 
+
+When the hierarchy is cut at $K = 6$, each of these branches is further divided into three distinct sub-clusters. Those occur at lower heights, reflecting smaller differences within these groups. More precise characteristics summary of the $K = 6$ tree can be found in @tbl-agnes-6. The resulting clusters are largely consistent with those obtained using *PAM* (@tbl-pam-6). The main difference can be observed in the fourth cluster, where the average survival rate increases to $25\%$, compared with $17\%$ for the corresponding *PAM* cluster.
+
+```{r}
+#| label: tbl-agnes-6
+#| tbl-cap: 'Description of dominant type of a passenger in a cluster created by the AGNES algorithm (K = 6).'
+#| cap-location: bottom
+
+create_simple_table(cluster_profiles_k6_agnes, c('Cluster', 'Count', 'Rate of Survival',
+                                           'Dominant Sex', 'Dominant Class', 'Main Embarked',
+                                           'Median of Age', 'Median of Fare', 'Median of Family Size'))
+
+```
+
+@fig-pam-2-6 shows the *AGNES* clusters assignments projected onto the 2D *MDS* space, with observations coloured according to their cluster. For $K = 2$, sex remains the main dividing factor. However, in contrast to the *PAM* clustering (@fig-pam-2-6), several observations from the male group have been assigned to the second cluster. As shown in @fig-mds-2d, these observations correspond to the male passengers from the 1st-class.
+
+The $K =6$ projection is largely consistent with the *PAM* clustering, with differences mainly limited to a few observations assigned to the fourth cluster.
+
+```{r}
+#| label: fig-agnes-2-6
+#| fig-cap: 'Visualisation of clusters created by the AGNES algorithm. Plotted on the dimensions created by the MDS.'
+#| fig-width: 12
+#| fig-height: 5
+
+p1 <- draw_mds_2d(var = 'cluster_agnes_k2', df = mds_train_extended, custom_title = "AGNES Clusters (k = 2)") + labs(color = "Cluster", fill = "Cluster")
+p2 <- draw_mds_2d(var = 'cluster_agnes_k6', df = mds_train_extended, custom_title = "AGNES Clusters (k = 6)") + labs(color = "Cluster", fill = "Cluster")
+
+p1 + p2 &
+  theme(legend.position = 'bottom')
+```
+
+
+#### Reduced feature space (PCA & MDS)
+
+As in the *PAM* analysis, we assess the effect of dimensionality reduction on the *AGNES* algorithm. The clustering was performed in the two-dimensional spaces generated by *MDS* and *PCA*, with the results shown in @fig-agnes-pca-mds.
+
+```{r}
+#| label: fig-agnes-pca-mds
+#| fig-cap: 'Comparison of actual survival status against AGNES clustering outcomes across low-dimensional projections.'
+#| layout-nrow: 2
+#| fig-width: 11
+#| fig-height: 8
+
+p1 <- draw_mds_2d(var = 'survived', df = mds_train_extended, custom_title = 'Actual Survival (MDS Space)')
+p2 <- draw_mds_2d(var = 'cluster_agnes_mds', df = mds_train_extended, custom_title = 'AGNES Clusters (2D MDS)') + labs(color = "Cluster", fill = "Cluster")
+
+p3 <- draw_pca_scatterplot(df = pca_train_extended, target_col = 'survived', var_explained = var_explained_train, custom_title = 'Actual Survival (PCA Space)')
+p4 <- draw_pca_scatterplot(df = pca_train_extended, target_col = 'cluster_agnes', var_explained = var_explained_train, custom_title = 'AGNES Clusters (2D PCA)') + labs(color = "Cluster", fill = "Cluster")
+
+(p1 + p2) / (p3 + p4)
+
+
+```
+
+In the *MDS* projection, *AGNES* produces clusters determined almost entirely by sex, in contrast to the more nuanced cluster assignments obtained in the full Gower space. Clustering in the *PCA* space yields results similar to those obtained with *PAM* (@fig-pam-pca-mds), with most differences concentrated in the lower-central region of the observation cloud.
+
+#### AGNES Results
+
+Similarly to the *PAM* analysis, we compare four different *AGNES* configurations against the actual `surived` labels. The clustering results are evaluated using the *Adjusted Rand Index* (*ARI*) and traditional classification metrics, calculated after assigning each cluster to either `Yes` or `No` based on the majority survival outcome within the cluster. The results are presented in @tbl-agnes-metrics.
+
+```{r}
+#| label: tbl-agnes-metrics
+#| tbl-cap: 'Performance metrics for AGNES clustering configurations benchmarked against actual survival labels.'
+#| cap-location: bottom
+
+create_simple_table(agnes_metrics_summary, colnames = c('Method',
+                                                      'ARI',
+                                                      'Accuracy',
+                                                      'Sensitivity',
+                                                      'Specificity'))
+
+```
+
+The key takeaways are:
+
+- On the full Gower matrix ($K=2$), *AGNES* achieves an $ARI$ of $0.2802$ and an $Accuracy$ of $76.54\%$). Applying *AGNES* directly on the 2D *MDS* projection results in slightly higher scores ($ARI = 0.3038$, $Accuracy = 77.70\%$). This difference can be attributed to the different spatial representations --- in the full Gower space, Ward linkage assigns some 1st-class male passengers to the same cluster as females, increasing $Sensitivity$ ($73.87\%$) while slightly reducing overall accuracy compared with the sex-driven separation in MDS space.
+
+- The choice of dissimilarity representation appears to have a greater impact on the clustering results than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or after 2D *MDS* projection, results in similar alignment with the survival labels, with approximately $78\%$ $Accuracy$ and an $ARI$ of around $0.30$. In contrast, clustering based on Euclidean distances in the *PCA* space achieves substantially lower alignment, at approximately $67\%$ $Accuracy$ and $ARI \approx 0.10$.
+
+- Increasing the number of clusters to $K = 6$ maintains the same overall $Accuracy$ of $76.54\%$, while increasing $Specificity$ to $92.95\%$. The additional clusters provide a more detailed partition of the data, but this does not result in stronger overall agreement with the survival labels.
+
+### Clustering --- Summary
+
+- Both *PAM* and *AGNES* with Ward linkage produce very similar cluster assignments. Despite not using the survived variable, both methods consistently identify sex as the main factor driving the observed structure of the dataset.
+
+- The choice of dissimilarity representation matters far more than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or via 2D *MDS*, achieves baseline classification alignment of $\approx 78\%$ $Accuracy$ ($ARI \approx 0.30$). In contrast, Euclidean metrics applied to *PCA* components fail across both algorithms ($\approx 67\%$ $Accuracy$, $ARI \approx 0.10$).
+
+- *MDS* proves to be an ideal feature compressor for mixed-type clustering in this dataset. It retains virtually $100\%$ of the cluster separating information of the full Gower matrix while drastically simplifying the dimensionality.
+
+## Supervised Learning
+
+## Results

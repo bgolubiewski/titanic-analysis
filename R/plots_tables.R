@@ -75,7 +75,7 @@ draw_distribution_barplot <- function(var) {
   
   df_plot <- titanic_clean %>% 
     filter(!is.na(.data[[var]])) %>% 
-    count(.data[[var]], name='count') %>% 
+    dplyr::count(.data[[var]], name='count') %>% 
     mutate(prop = count / sum(count))
   
   # variables which labels need rotating
@@ -133,7 +133,7 @@ draw_survival_barplot <- function(var) {
   
   df_plot <- data_qual %>% 
     filter(!is.na(.data[[var]]), !is.na(survived)) %>% 
-    count(.data[[var]], survived, name = 'count') %>% 
+    dplyr::count(.data[[var]], survived, name = 'count') %>% 
     group_by(.data[[var]]) %>% 
     mutate(
       prop = count / sum(count)
@@ -244,7 +244,7 @@ draw_lifeboat_barplot <- function() {
   
   df_plot <- titanic_clean %>% 
     filter(!is.na(lifeboat), !is.na(class), !is.na(sex), lifeboat != 'NS') %>% 
-    count(class, sex, name='count') %>%
+    dplyr::count(class, sex, name='count') %>%
     group_by(class) %>% 
     mutate(prop = count / sum(count)) %>% 
     ungroup()
@@ -639,11 +639,20 @@ draw_pca_heatmap <- function() {
     )
 }
 
-draw_pca_scatterplot <- function() {
-  pc1_label <- paste0('PC1 (', percent(var_explained[1], accuracy = 0.1), ')')
-  pc2_label <- paste0('PC2 (', percent(var_explained[2], accuracy = 0.1), ')')
+draw_pca_scatterplot <- function(df = pca_df,
+                                 var_explained = NULL,
+                                 target_col = 'survived',
+                                 custom_title = NULL) {
   
-  ggplot(pca_df, aes(x = PC1, y = PC2, color = survived, fill = survived)) +
+  pc1_label <- if(!is.null(var_explained)) paste0('PC1 (', percent(var_explained[1], accuracy = 0.1), ')') else 'PC1'
+  pc2_label <- if(!is.null(var_explained)) paste0('PC2 (', percent(var_explained[2], accuracy = 0.1), ')') else 'PC2'
+  
+  var_label <- get_label(target_col)
+  plot_title <- if(!is.null(custom_title)) custom_title else paste0('PCA projection by ', var_label)
+  
+  p <- ggplot(df, aes(x = PC1, y = PC2,
+                 color = .data[[target_col]],
+                 fill = .data[[target_col]])) +
     
     geom_point(alpha = 0.5, size = 2) +
     
@@ -654,17 +663,12 @@ draw_pca_scatterplot <- function() {
       linewidth = 0.8
     ) +
     
-    scale_color_manual(
-      values = c('Yes' = '#2B5B84', 'No' = '#E45756'),
-      name = 'Survived') +
-    scale_fill_manual(
-      values = c('Yes' = '#2B5B84', 'No' = '#E45756'),
-      name = 'Survived') +
-    
     labs(
-      title = 'PCA projection',
+      title = plot_title,
       x = pc1_label,
-      y = pc2_label
+      y = pc2_label,
+      color = var_label,
+      fill = var_label
     ) +
     
     theme_minimal(base_size = 12) +
@@ -679,6 +683,18 @@ draw_pca_scatterplot <- function() {
       panel.grid.minor = element_blank(),
       plot.background = element_rect(fill = "white", color = NA)
     )
+  
+  if (target_col == 'survived') {
+    p <- p +
+      scale_color_manual(values = c('Yes' = '#2B5B84', 'No' = '#E45756')) +
+      scale_fill_manual(values = c('Yes' = '#2B5B84', 'No' = '#E45756'))
+  } else {
+    p <- p +
+      scale_color_brewer(palette = 'Dark2') +
+      scale_fill_brewer(palette = 'Dark2')
+  }
+  
+  return(p)
 }
 
 draw_pca_biplot <- function() {
@@ -800,16 +816,26 @@ draw_mds_3d_static <- function() {
       title = 'Survival Status')
 }
 
-draw_mds_2d <- function(var, show_ellipse = FALSE) {
+draw_mds_2d <- function(var,
+                        df = mds_k2_df,
+                        custom_title = NULL,
+                        xlab = 'MDS Dimension 1',
+                        ylab = 'MDS Dimension 2',
+                        show_ellipse = FALSE) {
   
   var_label <- get_label(var)
-  is_numeric_var <- is.numeric(mds_k2_df[[var]])
+  is_numeric_var <- is.numeric(df[[var]])
   
   p <- if (is_numeric_var) {
-    ggplot(mds_k2_df, aes(x = x, y = y, color = .data[[var]]))
+    ggplot(df, aes(x = x, y = y, color = .data[[var]]))
   } else {
-    ggplot(mds_k2_df, aes(x = x, y = y, color = .data[[var]], fill = .data[[var]]))
+    ggplot(df, aes(x = x, y = y,
+                          color = .data[[var]],
+                          fill = .data[[var]]))
   }
+  
+  plot_title = if (!is.null(custom_title)) custom_title else {
+    paste0('2D MDS Representation by ', var_label)}
     
   p <- p + 
     geom_point(
@@ -819,9 +845,9 @@ draw_mds_2d <- function(var, show_ellipse = FALSE) {
     ) +
     
     labs(
-      title = paste0('2D MDS Representation by ', var_label),
-      x = 'MDS Dimension 1',
-      y = 'MDS Dimension 2',
+      title = plot_title,
+      x = xlab,
+      y = ylab,
       color = var_label,
       fill = if (is_numeric_var) NULL else var_label
     ) +
@@ -997,6 +1023,141 @@ draw_mds_3d_plotly <- function() {
     ),
     margin = list(l = 0, r = 0, b = 0, t = 40)
   )
+}
+
+# ------------------------------ Clustering ---------------------------------- #
+
+draw_silhouette <- function(df = sil_values,
+                            k_col = 'k',
+                            sil_col = 'silhouette',
+                            best_k = NULL,
+                            custom_title = 'Optimal Number of Clusters (Silhouette Method)',
+                            xlab = 'K (number of clusters)',
+                            ylab = 'Mean Silhouette Value') {
+  
+  
+  min_sil <- min(df[[sil_col]], na.rm = TRUE)
+  
+  ggplot(df, aes(x = .data[[k_col]], y = .data[[sil_col]])) +
+    
+    geom_line(color = '#0B2545', linewidth = 0.9) +
+    geom_point(color = '#0B2545', size = 2.5) +
+  
+    geom_vline(
+      xintercept = best_k,
+      linetype = 'dashed',
+      color = '#E45756',
+      linewidth = 0.6
+    ) +
+    
+    annotate('text',
+             x = if_else(best_k == 6, best_k - 0.75, best_k + 0.15),
+             y = min_sil,
+             label = paste0('Optimal K = ', best_k), color = '#E45756',
+             hjust = 0, vjust = 0, size = 3.5, fontface = 'bold'
+    ) +
+    
+    scale_x_continuous(breaks = k_range) +
+  
+    labs(
+      title = custom_title,
+      x = xlab,
+      y = ylab
+    ) +
+    
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 11, hjust = 0.5),
+    plot.margin = margin(10,10,20,20),
+    
+    axis.title.x = element_text(margin = margin(t = 8), size = 10),
+    axis.title.y = element_text(margin = margin(r = 8), size = 10),
+    
+    panel.grid.major = element_line(color = "grey90", linewidth = 0.3),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+  
+}
+
+draw_agnes_method_comparison <- function() {
+  
+  ggplot(ac_values_df, aes(x = reorder(method, ac), y = ac)) +
+    
+    geom_col(fill = '#0B2545', width = 0.6) +
+    geom_text(aes(label = round(ac, 3)), vjust = -0.5,
+              size = 3.5, fontface = 'bold') +
+    
+    scale_y_continuous(limits = c(0, 1.05), expand = c(0,0)) +
+    labs(
+      title = 'Agglomerative Coefficient (AC)',
+      x = 'Linkage Method',
+      y = 'AC Value'
+    ) +
+    
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 11, hjust = 0.5),
+      plot.margin = margin(10,10,20,20),
+      
+      axis.title.x = element_text(margin = margin(t = 8), size = 10),
+      axis.title.y = element_text(margin = margin(r = 8), size = 10),
+      
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank()
+    )
+}
+
+draw_agnes_dendrogram <- function(fit = agnes_fit,
+                                  k = 2,
+                                  custom_title = NULL,
+                                  show_rect = TRUE,
+                                  rect_fill = TRUE) {
+  
+  title_text <- if (!is.null(custom_title)) custom_title else {
+    paste0('AGNES Dendrogram (Ward Linkage, K = ', k, ')')
+  }
+  
+  palette <- if (k == 2) c('#E45756', '#0B2545') else 'Dark2'
+  
+  fviz_dend(
+    x = fit,
+    k = k,
+    show_labels = FALSE,
+    rect = show_rect,
+    rect_fill = rect_fill,
+    k_colors = palette,
+    ggtheme = theme_minimal(base_size = 12)
+  ) +
+    
+    scale_y_continuous(
+      limits = c(0, 7.5),
+      breaks = seq(0,7, by = 1),
+      expand = c(0,0)
+    ) +
+    
+    labs(
+      title = title_text,
+      x = 'Passenger Observations',
+      y = 'Height (Dissimilarity)'
+    ) +
+    
+    theme(
+      plot.title = element_text(face = "bold", size = 11, hjust = 0.5),
+      plot.margin = margin(10, 10, 20, 20),
+      
+      axis.title.x = element_text(margin = margin(t = 8), size = 10),
+      axis.title.y = element_text(margin = margin(r = 8), size = 10),
+     
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+     
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(color = "grey90", linewidth = 0.3),
+      panel.grid.minor = element_blank(),
+      
+      plot.background = element_rect(fill = "white", color = NA)
+    )
 }
 
 # -------------------------------- Tables ------------------------------------ #
