@@ -1160,6 +1160,199 @@ draw_agnes_dendrogram <- function(fit = agnes_fit,
     )
 }
 
+# -------------------------------- Models ------------------------------------ #
+
+draw_roc_curve <- function(models,
+                           method_name = NULL,
+                           custom_title = NULL) {
+  
+  roc_list <- lapply(models, function(m) {
+    preds <- m$pred
+    roc(
+      response = preds$obs,
+      predictor = preds$Yes,
+      levels = c('No', 'Yes')
+    )
+  })
+  
+  title_text <- if (!is.null(custom_title)) custom_title else {
+    paste0('ROC Curves - ', method_name)
+  }
+  
+  ggroc(roc_list, size = 1.1, legacy.axes = FALSE) +
+    geom_abline(
+      intercept = 1,
+      slope = 1,
+      linetype = 'dashed',
+      color = 'gray50',
+      linewidth = 0.6
+    ) +
+    
+    scale_color_brewer(palette = 'Set1') +
+    labs(
+      title = title_text,
+      subtitle = 'Performance evaluation across feature spaces (10-fold CV)',
+      x = 'Specificity',
+      y = 'Sensitivity',
+      color = 'Feature Set'
+    ) +
+    
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13, margin = margin(b = 4)),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10)),
+      plot.margin = margin(10,10,20,20),
+      
+      axis.title.x = element_text(margin = margin(t = 8), size = 10),
+      axis.title.y = element_text(margin = margin(r = 8), size = 10),
+      
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold", size = 10),
+      
+      panel.grid.minor = element_blank(),
+    )
+}
+
+
+draw_model_confusion_matrix <- function(model,
+                                        custom_subtitle = NULL,
+                                        custom_title = NULL) {
+  
+  title_text <- if (!is.null(custom_title)) custom_title else {
+    paste0('Confusion Matrix')
+  }
+  
+  subtitle_text <- if (!is.null(custom_subtitle)) custom_subtitle else {
+    paste0('10-fold CV')
+  }
+  
+  preds <- model$pred
+  cm <- confusionMatrix(preds$pred, preds$obs, positive = 'Yes')
+  df_cm <- as.data.frame(cm$table)
+  
+  colnames(df_cm) <- c('Predicted', 'Actual', 'Freq')
+  
+  total_obs <- sum(df_cm$Freq)
+  df_cm <- df_cm %>% 
+    mutate(
+      pct = Freq / total_obs * 100,
+      label = paste0(Freq, '\n', round(pct, 3), '%'),
+      text_color = ifelse(Freq > max(Freq) * 0.4, 'white', 'gray15')
+    )
+  
+  ggplot(df_cm, aes(x = Predicted, y = Actual, fill = Freq)) +
+    
+    geom_tile(color = 'white', linewidth = 1.5) +
+    geom_text(
+      aes(label = label, color = text_color),
+      fontface = 'bold',
+      size = 4.5,
+      lineheight = 0.9
+    ) +
+    
+    scale_color_identity() +
+    scale_fill_gradient(
+      low = "#DCEEFF",
+      high = "#C6284F"
+    ) +
+    
+    coord_fixed() +
+    labs(
+      title = title_text,
+      subtitle = subtitle_text,
+      x = 'Predicted Class',
+      y = 'Actual Class'
+    ) +
+    
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 11, hjust = 0.5),
+      plot.margin = margin(10,10,20,20),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10)),
+      
+      axis.text = element_text(size = 11, face = "bold", color = "gray20"),
+      axis.title.x = element_text(margin = margin(t = 8), size = 10),
+      axis.title.y = element_text(margin = margin(r = 8), size = 10),
+      
+      panel.grid = element_blank(),
+      legend.position = "none"
+    )
+}
+
+draw_knn_tuning <- function(knn_models_list) {
+  
+  # extract tuning results from all data variants
+  tuning_df <- bind_rows(lapply(names(knn_models_list), function(name) {
+    
+    m <- knn_models_list[[name]]
+    df <- m$results
+    df$feature_set <- name
+    
+    best_k <- m$bestTune$k
+    df$is_best <- df$k == best_k
+    return(df)
+  }))
+  
+  ggplot(tuning_df, aes(x = k, y = ROC,
+                        color = feature_set, group = feature_set)) +
+    
+    geom_line(linewidth = 1) +
+    
+    geom_point(
+      data = subset(tuning_df, !is_best),
+      size = 2.2,
+      alpha = 0.6,
+      show.legend = FALSE
+    ) +
+    geom_point(
+      data = subset(tuning_df, is_best),
+      shape = 21,
+      size = 4.5,
+      stroke = 1.3,
+      fill = 'white',
+      show.legend = FALSE
+    ) +
+    
+    geom_text_repel(
+      data = subset(tuning_df, is_best),
+      aes(label = paste0('k = ', k)),
+      fontface = 'bold',
+      size = 3.5,
+      direction = 'y',
+      nudge_y = 0.02,
+      segment.color = NA,
+      show.legend = FALSE
+    ) +
+    
+    scale_color_brewer(palette = 'Set1') +
+    scale_x_continuous(breaks = unique(tuning_df$k)) +
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+    
+    labs(
+      title = 'k-NN Parameter Tuning',
+      subtitle = 'ROC-AUC cross-validation score against number of neighbours (k)',
+      x = 'Number of Neighbours (k)',
+      y = 'ROC-AUC (10-fold CV)',
+      color = 'Feature Set'
+    ) +
+    
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13, margin = margin(b = 4)),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10)),
+      
+      plot.margin = margin(30, 20, 20, 20),
+      axis.title.x = element_text(margin = margin(t = 9), size = 10),
+      axis.title.y = element_text(margin = margin(r = 9), size = 10),
+      
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold", size = 10),
+      
+      panel.grid.minor = element_blank(),
+    )
+}
+
+
 # -------------------------------- Tables ------------------------------------ #
 
 create_simple_table <- function(data, colnames) {

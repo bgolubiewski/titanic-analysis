@@ -30,11 +30,14 @@ library(corrplot)
 library(caret)
 library(cluster)
 library(mclust)
+library(pROC)
+library(car)
 
 # Data manipulation and visualization
 library(tidyverse)
 library(scales)
 library(patchwork)
+library(ggrepel)
 library(factoextra)
 library(viridis)
 library(plotly)
@@ -50,6 +53,9 @@ library(kableExtra)
 library(here)
 
 
+source(here("R", "functions.R"))
+source(here("R", "plots_tables.R"))
+
 source(here("R", "01_import.R"))
 source(here("R", "02_cleaning.R"))
 source(here("R", "03_features.R"))
@@ -60,9 +66,11 @@ source(here("R", "Modeling", "01_split_and_prep.R"))
 source(here("R", "Modeling", "02_feature_engineering_dim.R"))
 source(here("R", "Modeling", "03_pam.R"))
 source(here("R", "Modeling", "04_agnes.R"))
+source(here("R", "Modeling", "05_log_regression.R"))
+source(here("R", "Modeling", "06_knn.R"))
 
-source(here("R", "functions.R"))
-source(here("R", "plots_tables.R"))
+
+# Em dash —
 ```
 
 # Introduction
@@ -554,11 +562,11 @@ The analysis also highlighted critical technical considerations for subsequent d
 
 # Principal Component Analysis {#sec-pca}
 
-*Principal Component Analysis* (*PCA*) is a linear dimensionality reduction method, that transforms a set of potentially correlated variables into a smaller set of linearly uncorrelated principal components, preserving as much variance as possible.
+*Principal Component Analysis* (PCA) is a linear dimensionality reduction method, that transforms a set of potentially correlated variables into a smaller set of linearly uncorrelated principal components, preserving as much variance as possible.
 
 For this analysis, the continuous variables were selected (`fare`, `age`, `siblings_spouses`, `parents_children`). The `class` variable, although originally categorical, was also included by treating it as an ordinal variable and mapping its labels to their corresponding numerical values. This approach was considered appropriate because passenger class has a natural ordering, with the numerical values representing the relative position of each class. Furthermore, as shown in @sec-eda, passenger class was identified as one of the most important factors associated with survival.
 
-Because PCA is highly sensitive to variable scales, and features like `fare` exhibit great value dispersion (see @sec-quant-boxplot), all variables were standardized prior to the analysis.
+Because PCA is highly sensitive to variable scales, and features like `fare` exhibit great value dispersion (see @fig-quant-boxplot), all variables were standardized prior to the analysis.
 
 ```{r}
 #| label: fig-pca-1
@@ -609,7 +617,7 @@ The considerable overlap between the two $95\%$ confidence ellipses indicates th
 
 ## Method and Assesment of Accuracy
 
-Multidimensional Scaling (MDS) is a dimensionality reduction technique that aims to measure the distance between variables and represent them in a lower-dimensional space while preserving their pairwise dissimilarities as accurately as possible.
+*Multidimensional Scaling* (MDS) is a dimensionality reduction technique that aims to measure the distance between variables and represent them in a lower-dimensional space while preserving their pairwise dissimilarities as accurately as possible.
 
 Not all variables were included in the MDS procedure. The analysis was conducted without `family_size`, as it duplicates data of `parents_children` and `siblings_spouses`; `is_child`, as it duplicates information contained in `age`; and `lifeboat`, as it directly determines survival). The following variables were also excluded from the calculations but were used in selected plots in this section: `survived`, `age_group`, `family_size_group`. The categorical versions of quantitative variables were used to facilitate plots analysis.
 
@@ -714,17 +722,17 @@ The structure revealed by MDS is consistent with the key findings from the EDA. 
 
 The observed structure also suggests that the relationships between passenger characteristics and survival may be non-linear. This makes tree-based classification methods, such as Random Forest and XGBoost, promising candidates for the predictive stage, as they can capture non-linear relationships and interactions between predictors without requiring them to be specified explicitly. Furthermore, the elongated, non-spherical shape of the clusters indicates that density-based or hierarchical clustering will perform significantly better than $K$-Means.
 
-# Modeling
+# Modeling {#sec-modeling}
 
 Having explored the main patterns in the data, we now move on to the modelling stage. The dataset has been split into the training and test sets using a $80/20$ stratified (on `survived`) split, with a fixed seed of `12578891` to ensure that the results are repetitive.
 
 Before any calculations, some variables were also removed. Most importantly, `lifeboat` has been excluded, because it determines `survival`. To reduce collinearity, the two variables `parents_children` and `siblings_spouses` were removed in favour of the single `family_size` feature. We also leave out categorical variables such as `is_child`, `age_group`, and `family_size_group`, as they largely duplicate information contained in the corresponding numerical variables. This also gives the models access to the original numerical information rather than its simplified qualitative versions.
 
-The modeling section covers both unsupervised and supervised approaches: \* Unsupervised Learning: Clustering algorithms (*AGNES* and *PAM*) are used to assess whether natural passenger groupings align with survival patterns without using target labels. \* Supervised Learning: Classification algorithms are trained to predict individual survival outcomes based on passenger attributes.
+The modeling section covers both unsupervised and supervised approaches: \* Unsupervised Learning: Clustering algorithms (AGNES and PAM) are used to assess whether natural passenger groupings align with survival patterns without using target labels. \* Supervised Learning: Classification algorithms are trained to predict individual survival outcomes based on passenger attributes.
 
-To obtain more reliable and unbiased performance estimates, we use *10-fold cross-validation* on *ROC-AUC* metrics. The test set remains entirely untouched during this phase and is reserved exclusively for the final evaluation of the champion model to verify its capability. This reduces the influence of any single random split of the training data and provides a more stable basis for comparing the different modelling approaches.
+To obtain more reliable and unbiased performance estimates, we use 10-fold cross-validation on ROC-AUC metrics. The test set remains entirely untouched during this phase and is reserved exclusively for the final evaluation of the champion model to verify its capability. This reduces the influence of any single random split of the training data and provides a more stable basis for comparing the different modelling approaches.
 
-At the same time, we examine whether dimensionality reduction can provide useful additional information. *PCA* and *Gower-based MDS* are used to create two-dimensional representations of the training data. These new dimensions are then added to the original feature set, allowing us to compare the baseline models with versions enriched by *PCA* or *MDS* features.
+At the same time, we examine whether dimensionality reduction can provide useful additional information. PCA and Gower-based MDS are used to create two-dimensional representations of the training data. These new dimensions are then added to the original feature set, allowing us to compare the baseline models with versions enriched by PCA or MDS features.
 
 To confirm that the $80\%$ training subset preserves the structural and geometric properties identified during EDA, we first inspect its projections.
 
@@ -747,13 +755,13 @@ draw_mds_2d(var = 'survived', df = mds_train_extended, show_ellipse = TRUE)
 
 The visual analysis of @fig-pca-mds-geom confirms that the cluster structure remains stable and is broadly consistent the results obtained for the full dataset (see @fig-pca-2-1 and @fig-mds-survival-1). We continue to observe a separation between groups with higher and lower survival probabilities, driven primarily by the combined effects of sex and passenger class.
 
-It is also worth noting a technical difference in the *PCA* results. On the training set, the first two principal components jointly explain approximately $77\%$ of the total variance, compared with around $68\%$ for the full dataset. This difference does not indicate a change in the data structure following the train-test split. Rather, it results from the feature selection conducted specifically for the modelling stage. For the full dataset calculations were done with both `parents_children` and `siblings_spouses`, while for the training set, only `family_size` was used. Thanks to that, *PCA* was able to capture a larger proportion of the remaining variance in its first two components.
+It is also worth noting a technical difference in the PCA results. On the training set, the first two principal components jointly explain approximately $77\%$ of the total variance, compared with around $68\%$ for the full dataset. This difference does not indicate a change in the data structure following the train-test split. Rather, it results from the feature selection conducted specifically for the modelling stage. For the full dataset calculations were done with both `parents_children` and `siblings_spouses`, while for the training set, only `family_size` was used. Thanks to that, PCA was able to capture a larger proportion of the remaining variance in its first two components.
 
 ## Clustering
 
 ### Partitioning Around Medoids (PAM)
 
-The *Partitioning Around Medoids* (*PAM*) algorithm is a clustering method used to divide a dataset into a predefined number of distinct groups based on the distances between observations. Unlike methods like *k-means*, which represent clusters using centroids, *PAM* uses medoids --- actual observations from the dataset that serve as representative members of their respective cluster.
+The *Partitioning Around Medoids* (PAM) algorithm is a clustering method used to divide a dataset into a predefined number of distinct groups based on the distances between observations. Unlike methods like k-Means, which represent clusters using centroids, PAM uses medoids --- actual observations from the dataset that serve as representative members of their respective cluster.
 
 #### Full feature space
 
@@ -819,9 +827,9 @@ p4 <- draw_pca_scatterplot(df = pca_train_extended, target_col = 'cluster_pam', 
 ```
 
 
-#### PAM Results
+#### PAM Performance
 
-To compare the *PAM* configurations with the actual `surived` labels, four clustering setups were evaluated using the metrics in @tbl-pam-metrics. Cluster agreement with the true labels is measured using the *Adjusted Rand Index* (*ARI*), where 0 indicates chance-level agreement and 1 indicates a perfect match. Traditional classification metrics (*Accuracy, Sensitivity, Specificity*) are calculated after assigning each cluster to either `Yes` or `No` survival value based on majority.
+To compare the PAM configurations with the actual `surived` labels, four clustering setups were evaluated using the metrics in @tbl-pam-metrics. Cluster agreement with the true labels is measured using the *Adjusted Rand Index* (ARI), where 0 indicates chance-level agreement and 1 indicates a perfect match. Traditional classification metrics (`Accuracy, Sensitivity, Specificity`) are calculated after assigning each cluster to either `Yes` or `No` survival value based on majority.
  
 ```{r}
 #| label: tbl-pam-metrics
@@ -837,17 +845,17 @@ create_simple_table(pam_metrics_summary, colnames = c('Method',
 
 The findings are:
 
-- *PAM* in the 2D *MDS* space gives the same performance as *PAM* using the full Gower space ($ARI=0.3038$, $Accuracy=77.70\%$), suggesting that the two-dimensional MDS representation retains the main structure relevant to this clustering.
+- PAM in the 2D MDS space gives the same performance as PAM using the full Gower space ($ARI=0.3038$, $Accuracy=77.70\%$), suggesting that the two-dimensional MDS representation retains the main structure relevant to this clustering.
 
-- *PAM* performs substantially worse in the *PCA* space ($ARI=0.1015$, $Accuracy=66.60\%$), with particularly low sensitivity ($44.97\%$). This indicates that the *PCA* representation is less suitable for this clustering task.
+- PAM performs substantially worse in the PCA space ($ARI=0.1015$, $Accuracy=66.60\%$), with particularly low sensitivity ($44.97\%$). This indicates that the PCA representation is less suitable for this clustering task.
 
-- The six-cluster solution has a lower *ARI* ($0.1232$) but similar accuracy ($77.51\%$) and high specificity ($93.42\%$). The additional clusters therefore provide a more detailed partition, although this does not translate into stronger overall agreement with the survival labels.
+- The six-cluster solution has a lower $\text{ARI}$ ($0.1232$) but similar accuracy ($77.51\%$) and high specificity ($93.42\%$). The additional clusters therefore provide a more detailed partition, although this does not translate into stronger overall agreement with the survival labels.
 
-Overall, within the *PAM* configurations considered here, the Gower-based representation performs better than *PCA*, while the 2D *MDS* representation retains the clustering structure of the full Gower space. These results provide a useful baseline for comparison with the *AGNES* results presented next.
+Overall, within the PAM configurations considered here, the Gower-based representation performs better than PCA, while the 2D MDS representation retains the clustering structure of the full Gower space. These results provide a useful baseline for comparison with the AGNES results presented next.
 
 ### Agglomerative Nesting (AGNES)
 
-The *Agglomerative Nesting* (*AGNES*) algorithm is a hierarchical clustering method used to organize a dataset into a hierarchy of nested groups based on distances between observations. Unlike methods such as *k-means* or *PAM*, which divide the data directly into a predefined number of clusters, *AGNES* starts by treating each observation as a separate cluster and then progressively merges the most similar clusters until a single one remains. The resulting hierarchy is represented as a dendrogram, which can be cut at a suitable level to obtain the desired number of clusters.
+The *Agglomerative Nesting* (AGNES) algorithm is a hierarchical clustering method used to organize a dataset into a hierarchy of nested groups based on distances between observations. Unlike methods such as k-Means or PAM, which divide the data directly into a predefined number of clusters, AGNES starts by treating each observation as a separate cluster and then progressively merges the most similar clusters until a single one remains. The resulting hierarchy is represented as a dendrogram, which can be cut at a suitable level to obtain the desired number of clusters.
 
 #### Full feature space
 
@@ -930,7 +938,7 @@ p4 <- draw_pca_scatterplot(df = pca_train_extended, target_col = 'cluster_agnes'
 
 In the *MDS* projection, *AGNES* produces clusters determined almost entirely by sex, in contrast to the more nuanced cluster assignments obtained in the full Gower space. Clustering in the *PCA* space yields results similar to those obtained with *PAM* (@fig-pam-pca-mds), with most differences concentrated in the lower-central region of the observation cloud.
 
-#### AGNES Results
+#### AGNES Performance
 
 Similarly to the *PAM* analysis, we compare four different *AGNES* configurations against the actual `surived` labels. The clustering results are evaluated using the *Adjusted Rand Index* (*ARI*) and traditional classification metrics, calculated after assigning each cluster to either `Yes` or `No` based on the majority survival outcome within the cluster. The results are presented in @tbl-agnes-metrics.
 
@@ -965,4 +973,183 @@ The key takeaways are:
 
 ## Supervised Learning
 
+In this section, we move on to supervised learning methods. To examine how dimensionality reduction affects classification accuracy, each algorithm was evaluated using four different feature subsets:
+
+* Full Dataset
+* 2D MDS
+* 2D PCA
+* Full + 2D MDS --- a new addition that combines preprocessed features with the MDS dimensions.
+
+To ensure a random-proof evaluation and avoid data leakage, all models are evaluated using 10-fold Cross-Validation (CV). All feature processing steps, such as centering and scaling, were performed separately within each training fold.
+
+### Regression
+
+The first supervised learning method used was *Logistic Regression*. Ordinary linear regression is not suitable for this task because the target variable is binary and linear regression can produce predictions outside the valid probability range of $[0, 1]$.
+
+To address this, we use Logistic Regression, which models the log-odds of survival using the logit link function:
+
+$$\ln\left(\frac{p}{1-p}\right) = \beta_0 + \beta_1 X_1 + \dots + \beta_k X_k$$
+
+where $p = P(Y = \text{"Yes"} \mid X)$ represents the conditional probability of survival given the feature vector $X$. 
+
+In addition to providing a fast and interpretable baseline classifier, Logistic Regression allows the effects of individual features to be expressed through Odds Ratios ($e^\beta$). These provide a direct interpretation of how a one-unit increase in a feature affects the odds of survival, while keeping the other variables constant.
+
+#### Coefficients Interpretation
+
+To evaluate the impact of individual features, the logistic regression coefficients ($\beta$) are converted into Odds Ratios ($OR = e^\beta$). @tbl-lr-coefficients presents the estimated coefficients, Odds Ratio, confidence intervals, and statistical significance levels for each variable in the full model:
+
+* Odds Ratio ($OR$) --- shows how a given variable is associated with the odds of survival. Values above $1$ indicate higher odds, while values below $1$ indicate lower odds, with other variables held constant.
+
+* $95\%$ Confidence Interval ($95\%$ CI) --- provides a range of plausible values for the Odds Ratio. An interval that does not include $1.0$ indicates statistical significance at the $\alpha = 0.05$ level.
+
+* $p$-Value --- based on the Wald $z$-test, it tests null hypothesis that the variable has no effect on survival ($\beta = 0$, equivalent to $OR = 1.0$).
+
+* Significance --- significance levels are indicated by `***` ($p < 0.001$), `**` ($p < 0.01$), `*` ($p < 0.05$), and `ns` (not significant).
+
+```{r}
+#| label: tbl-lr-coefficients
+#| tbl-cap: 'Odds Ratios and Significance for Full Feature Logistic Regression Model'
+#| cap-location: bottom
+
+create_simple_table(
+  lr_coefficients,
+  colnames = c('Variable', 'Odds Ratio', '95% CI', 'p-Value', 'Significance'))
+
+```
+
+The fitted logistic regression model confirms the main survival patterns identified during the unsupervised analysis:
+
+- Sex (`sexmale`) --- being male is strongly associated with lower survival odds ($OR = 0.277, p < 0.001$). Holding other variables constant, male passengers had 72.3% lower survival odds than female passengers ($1 - 0.277 = 0.723$).
+
+- Passenger Class (`class2nd`, `class3rd`) --- survival odds were lower in both 2nd- and 3rd-class compared with 1st-class. For 3rd-class, the odds were $70.2\%$ lower ($OR = 0.298, p < 0.001$), while for 2nd-class they were $38.5\%$ lower ($OR = 0.615, p < 0.001$).
+
+- Age (`age`) --- negatively associated with survival ($OR = 0.592, p < 0.001$). A one-standard-deviation increase in age is associated with a $40.8\%$ decrease in survival odds.
+
+- Family Size (`family_size`) --- larger family sizes are associated with lower survival odds ($OR = 0.746, p = 0.0031$). A one-standard-deviation increase in family size corresponds to a $25.4\%$ decrease in survival odds.
+
+- Fare & Embarkation (`fare`, `embarkedS`, `embarkedQ`) --- passengers embarking at Southampton had lower survival odds than those embarking at Cherbourg ($OR = 0.805, p = 0.0258$). In contrast, fare was not statistically significant ($p = 0.8189$), suggesting that it provides little additional information about survival once passenger class is taken into account.
+
+#### Comparing Different Feature Spaces
+
+To compare classification performance across the different feature sets, ROC curves were generated using the out-of-fold predictions from 10-fold CV. This allows us to compare how well Logistic Regression performs with each feature representation.
+
+```{r}
+#| label: fig-lr-roc
+#| fig-cap: 'ROC Curves Comparison Across Feature Spaces for Logistic Regression'
+
+draw_roc_curve(lr_models, method_name = 'Logistic Regression', custom_title = 'ROC Curves - Logistic Regression')
+
+```
+
+As shown in @fig-lr-roc, the ROC curves display very similar performance for the `Full Features`, `2D MDS`, and the hybrid `Full + 2D MDS`, with the curves almost completely overlapping. Conversely, `2D PCA` performs significantly worse, further confirming that linear PCA fails to capture critical relationships that MDS preserves.
+
+**Note on Multicollinearity:** The hybrid `Full + 2D MDS` model shows substantial multicollinearity, as expected given that the MDS coordinates are derived from the same information as the original features. The VIF values are particularly high for the MDS coordinates ($VIF_x=86.87$, $VIF_y=137.42$), as well as for several of the original predictors. High VIF indicates that individual predictors contain overlapping information, which increases the uncertainty of their estimated regression coefficients and makes their individual effects difficult to interpret reliably. For this reason, odds-ratio interpretation is based on the `Full Features` model rather than the hybrid model. Importantly, high multicollinearity does not necessarily reduce the model's predictive performance, so the classification metrics of the hybrid model can still be evaluated normally.
+
+
+#### Regression Performance
+
+All classification metrics are calculated from the out-of-fold (*OOF*) predictions collected across the CV procedure, Using a single set of OOF predictions keeps the reported performance metrics consistent with the ROC curves and the final confusion matrix.
+
+```{r}
+#| label: tbl-lr-performance
+#| tbl-cap: 'Logistic Regression Performance Metrics Across Feature Spaces (10-fold CV)'
+#| cap-location: bottom
+
+create_simple_table(lr_performance, colnames = c(
+  'Feature Set', 'AUC', 'Accuracy', 'Sensitivity', 'Specificity', 'F1'
+))
+
+
+```
+
+The results in @tbl-lr-performance shows differences between the feature spaces. The hybrid space, combining the baseline features with the 2D MDS coordinates, gives the strongest overall results, with $\text{AUC} = 0.8483$, $\text{Accuracy} = 0.8002$, $\text{F1} = 0.7336$. This suggests that the MDS coordinates capture additional information that is not fully represented by the original variables, resulting in a small improvement in classification performance.
+
+The 2D MDS representation also performs relatively well on its own. Its AUC of $0.8225$ is close to the baseline value of $0.8436$, retaining approximately $97.5\%$ of the baseline AUC. Despite reducing the data to only two dimensions, MDS therefore preserves most of the information relevant for separating the two classes.
+
+In contrast, the 2D PCA representation performs substantially worse. Its AUC drops to $0.6589$, while sensitivity falls to $0.3166$. This indicates that the linear PCA projection loses important information needed for classification.
+
+
+```{r}
+#| label: fig-lr-cm
+#| fig-cap: "Confusion Matrix Heatmap for Best Model (Full + 2D MDS)."
+#| cap-location: bottom
+
+draw_model_confusion_matrix(
+  lr_models[['Full + 2D MDS']],
+  custom_title = 'Confusion Matrix — Logistical Regression',
+  custom_subtitle = 'Full + 2D MDS dataset')
+
+```
+
+The confusion matrix (@fig-lr-cm) for the `Full + 2D MDS` model shows that the model performs better at identifying non-survivors than survivors. It correctly classifies $544$ non-survivors, corresponding to $52.51\%$ of all observations. This results in a specificity of $85.27\%$, with $94$ false positives ($9.07\%$ of all observations).
+
+For survivors, the model correctly identifies $285$ cases, corresponding to $27.51\%$ of all observations, giving a sensitivity of $71.61\%$. There are $113$ false negatives ($10.91\%$ of all observations), where survivors are classified as non-survivors. Overall, the confusion matrix indicates that the number of false positives and false negatives is relatively similar.
+
+### $k$-Nearest Neighbours
+
+The *$k$-Nearest Neighbors* ($k$-NN) algorithm is a non-parametric method that predicts the outcome based on the values of an observation's $k$ closest neighbours in the feature space. Since $k$-NN relies on distance-based measures, the features were standardized independently within each CV fold.
+
+#### Parameter Tuning
+
+```{r}
+#| label: fig-knn-tuning
+#| fig-cap: 'Optimization of hyperparameter $k$ across tested feature spaces.'
+
+draw_knn_tuning(knn_models)
+```
+
+To find the optimal parameter for each feature space, different values of $k$ were evaluated using 10-fold CV (@fig-knn-tuning). The selected $k$ values vary slightly across representations: $k = 13$ for both `Full Features` and `Full + 2D MDS`, $k = 19$ for `2D MDS`, and $k = 15$ for `2D PCA`.
+
+For the top three feature sets, the tuning curves remain remarkably stable near $\text{AUC} \approx 0.84$, indicating low sensitivity to the exact choice of $k$. In contrast, `2D PCA` underperforms across the entire search range, peaking at an $\text{AUC}$ of just $0.72$.
+
+#### Comparing Different Feature Spaces
+
+To evaluate classification performance across different feature sets for the tuned $k$-NN models, ROC curves were generated using out-of-fold CV predictions (@fig-knn-roc).
+
+```{r}
+#| label: fig-knn-roc
+#| fig-cap: 'ROC Curves Comparison Across Feature Spaces for $k$-NN.'
+
+draw_roc_curve(knn_models, method_name = 'k-NN', custom_title = 'ROC Curves — k-NN')
+
+```
+
+The ROC curves show that `Full Features`, `2D MDS`, and `Full + 2D MDS` achieve virtually identical and consistently high performance. Since $k$-NN is based on distances between observations, the 2D Gower MDS representation appears to preserve the most relevant distance relations from the original feature space. In contrast, the 2D PCA representation performs noticeably worse.
+
+#### $k$-NN Performance
+
+All classification metrics were calculated from pooled out-of-fold predictions obtained through 10-fold CV (@tbl-knn-performance).
+
+```{r}
+#| label: tbl-knn-performance
+#| tbl-cap: '$k$-NN Performance Metrics Across Feature Spaces (10-fold CV).'
+#| cap-location: bottom
+
+create_simple_table(knn_performance, colnames = c(
+  'Feature Set', 'AUC', 'Accuracy', 'Sensitivity', 'Specificity', 'F1'
+))
+
+```
+
+The hybrid space (`Full + 2D MDS`) achieved the most balanced performance, with the highest $\text{AUC}$ ($0.8430$), $\text{Sensitivity}$ ($0.6407$), and $\text{F1}$ score ($0.6986$), closely followed by `Full Features` ($\text{AUC} = 0.8418$). Interestingly, `2D MDS` alone achieved the highest Accuracy ($0.7944$) and Specificity ($0.9169$), while `2D PCA` performed noticeably worse across all metrics, with an $\text{AUC}$ of only $0.7175$. To further examine the classification errors of the `Full + 2D MDS` model, its out-of-fold confusion matrix is shown below (@fig-knn-cm).
+
+```{r}
+#| label: fig-knn-cm
+#| fig-cap: "Confusion Matrix Heatmap for Best Model (Full + 2D MDS)."
+#| cap-location: bottom
+
+draw_model_confusion_matrix(
+  knn_models[['Full + 2D MDS']],
+  custom_title = 'Confusion Matrix — k-NN',
+  custom_subtitle = 'Full + 2D MDS dataset')
+
+```
+
+The confusion matrix (@fig-knn-cm) for the `Full + 2D MDS` model shows a higher specificity than sensitivity. The model correctly classifies $561$ non-survivors, corresponding to $54.15%$ of all observations, resulting in a specificity of $87.93%$. It produces $77$ false positives, which account for $7.43%$ of all observations.
+
+Among survivors, the model correctly identifies $255$ cases, corresponding to $24.61%$ of all observations and a sensitivity of $64.07%$. The remaining $143$ survivors are incorrectly classified as non-survivors, representing $13.80%$ of all observations. Overall, false negatives are more frequent than false positives, indicating that the model misses more survivors than it incorrectly identifies non-survivors.
+
+
 ## Results
+
+Wskazówka na przyszłość (do sekcji porównawczej modeli):Zauważ ciekawą zależność: w porównaniu do Regresji Logistycznej, $k$-NN ma wyższą swoistość (Specificity $87.93\%$ vs $85.27\%$), ale niższą czułość (Sensitivity $64.07\%$ vs $71.61\%$). To świetny punkt do wykorzystania w podsumowaniu całego raportu przy wyborze "najlepszego" modelu w zależności od priorytetów.

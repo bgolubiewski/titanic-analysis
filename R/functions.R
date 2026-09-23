@@ -96,10 +96,36 @@ evaluate_clustering <- function(cluster_vector, true_labels, method_name) {
   cm <- confusionMatrix(pred, true_labels, positive = 'Yes')
   
   data.frame(
-    Method = method_name,
-    ARI = round(adjustedRandIndex(cluster_vector, true_labels), 4),
-    Accuracy = round(unname(cm$overall['Accuracy']), 4),
-    Sensitivity = round(unname(cm$byClass['Sensitivity']), 4),
-    Specificity = round(unname(cm$byClass['Specificity']), 4)
+    method = method_name,
+    ari = round(adjustedRandIndex(cluster_vector, true_labels), 4),
+    accuracy = round(unname(cm$overall['Accuracy']), 4),
+    sensitivity = round(unname(cm$byClass['Sensitivity']), 4),
+    specificity = round(unname(cm$byClass['Specificity']), 4)
   )
-}  
+}
+
+evaluate_supervised_methods <- function(models_list) {
+  
+  bind_rows(lapply(names(models_list), function(name) {
+    m <- models_list[[name]]
+    preds <- m$pred
+    cm <- confusionMatrix(preds$pred, preds$obs, positive = 'Yes')
+    
+    roc_obj <- roc(
+      response = preds$obs,
+      predictor = preds$Yes,
+      levels = c('No', 'Yes'),
+      quiet = TRUE
+    )
+    auc_val <- as.numeric(auc(roc_obj))
+    
+    data.frame(
+      feature_set = name,
+      roc_auc = round(auc_val, 4),
+      accuracy = round(unname(cm$overall['Accuracy']), 4),
+      sensitivity = round(unname(cm$byClass['Sensitivity']), 4),
+      specificity = round(unname(cm$byClass['Specificity']), 4),
+      f1 = round(unname(cm$byClass['F1']), 4)
+    )
+  }))
+}
