@@ -1236,7 +1236,7 @@ draw_model_confusion_matrix <- function(model,
   df_cm <- df_cm %>% 
     mutate(
       pct = Freq / total_obs * 100,
-      label = paste0(Freq, '\n', round(pct, 3), '%'),
+      label = paste0(Freq, '\n', round(pct, 2), '%'),
       text_color = ifelse(Freq > max(Freq) * 0.4, 'white', 'gray15')
     )
   
@@ -1268,7 +1268,7 @@ draw_model_confusion_matrix <- function(model,
     theme(
       plot.title = element_text(face = "bold", size = 11, hjust = 0.5),
       plot.margin = margin(10,10,20,20),
-      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10)),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10), hjust = 0.5),
       
       axis.text = element_text(size = 11, face = "bold", color = "gray20"),
       axis.title.x = element_text(margin = margin(t = 8), size = 10),
@@ -1334,6 +1334,219 @@ draw_knn_tuning <- function(knn_models_list) {
       x = 'Number of Neighbours (k)',
       y = 'ROC-AUC (10-fold CV)',
       color = 'Feature Set'
+    ) +
+    
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13, margin = margin(b = 4)),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10)),
+      
+      plot.margin = margin(30, 20, 20, 20),
+      axis.title.x = element_text(margin = margin(t = 9), size = 10),
+      axis.title.y = element_text(margin = margin(r = 9), size = 10),
+      
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold", size = 10),
+      
+      panel.grid.minor = element_blank(),
+    )
+}
+
+draw_decision_tree <- function(dt_model) {
+  
+  tree <- dt_model$finalModel
+  
+  par(mar = c(0.5, 0.5, 2, 0.5))
+  rpart.plot(
+    tree,
+    type = 4,
+    extra = 104,
+    under = TRUE,
+    box.palette = 'Blues',
+    shadow.col = 'gray90',
+    roundint = FALSE,
+    tweak = 1.2,
+    main = 'Decision Tree Structure (Full Features)'
+  )
+}
+
+draw_dt_tuning <- function(dt_models_list) {
+  
+  # extract tuning results from all data variants
+  tuning_df <- bind_rows(lapply(names(dt_models_list), function(name) {
+    
+    m <- dt_models_list[[name]]
+    df <- m$results
+    df$feature_set <- name
+    
+    best_cp <- m$bestTune$cp
+    df$is_best <- abs(df$cp - best_cp) < 1e-7
+    return(df)
+  }))
+  
+  ggplot(tuning_df, aes(x = cp, y = ROC,
+                        color = feature_set, group = feature_set)) +
+    
+    geom_line(linewidth = 1) +
+    
+    geom_point(
+      data = subset(tuning_df, !is_best),
+      size = 2.2,
+      alpha = 0.6,
+      show.legend = FALSE
+    ) +
+    geom_point(
+      data = subset(tuning_df, is_best),
+      shape = 21,
+      size = 4.5,
+      stroke = 1.3,
+      fill = 'white',
+      show.legend = FALSE
+    ) +
+    
+    geom_text_repel(
+      data = subset(tuning_df, is_best),
+      aes(label = paste0('cp = ', round(cp, 4))),
+      fontface = 'bold',
+      size = 3.5,
+      direction = 'y',
+      nudge_y = 0.03,
+      segment.color = NA,
+      show.legend = FALSE
+    ) +
+    
+    scale_color_brewer(palette = 'Set1') +
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+    
+    labs(
+      title = 'Decision Tree Parameter Tuning',
+      subtitle = 'ROC-AUC cross-validation score against Complexity Parameter (cp)',
+      x = 'Complexity Parameter (cp)',
+      y = 'ROC-AUC (10-fold CV)',
+      color = 'Feature Set'
+    ) +
+    
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13, margin = margin(b = 4)),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10)),
+      
+      plot.margin = margin(30, 20, 20, 20),
+      axis.title.x = element_text(margin = margin(t = 9), size = 10),
+      axis.title.y = element_text(margin = margin(r = 9), size = 10),
+      
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold", size = 10),
+      
+      panel.grid.minor = element_blank(),
+    )
+}
+
+
+draw_rf_tuning <- function(rf_models_list) {
+  
+  # extract tuning results from all data variants
+  tuning_df <- bind_rows(lapply(names(rf_models_list), function(name) {
+    
+    m <- rf_models_list[[name]]
+    df <- m$results %>% 
+      group_by(mtry) %>% 
+      summarise(ROC = max(ROC, na.rm = TRUE), .groups = 'drop') %>% 
+      mutate(feature_set = name)
+    
+    best_mtry <- m$bestTune$mtry
+    df$is_best <- df$mtry == best_mtry
+    return(df)
+  }))
+  
+  ggplot(tuning_df, aes(x = mtry, y = ROC,
+                        color = feature_set, group = feature_set)) +
+    
+    geom_line(linewidth = 1) +
+    
+    geom_point(
+      data = subset(tuning_df, !is_best),
+      size = 2.2,
+      alpha = 0.6,
+      show.legend = FALSE
+    ) +
+    geom_point(
+      data = subset(tuning_df, is_best),
+      shape = 21,
+      size = 4.5,
+      stroke = 1.3,
+      fill = 'white',
+      show.legend = FALSE
+    ) +
+    
+    geom_text_repel(
+      data = subset(tuning_df, is_best),
+      aes(label = paste0('mtry = ', round(mtry, 4))),
+      fontface = 'bold',
+      size = 3.5,
+      direction = 'y',
+      nudge_y = 0.02,
+      segment.color = NA,
+      show.legend = FALSE
+    ) +
+    
+    scale_color_brewer(palette = 'Set1') +
+    scale_x_continuous(breaks = unique(tuning_df$mtry)) +
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+    
+    labs(
+      title = 'Random Forest Parameter Tuning',
+      subtitle = 'Optimal ROC-AUC cross-validation score against mtry across feature spaces',
+      x = 'Number of Randomly Sampled Variables (mtry)',
+      y = 'ROC-AUC (10-fold CV)',
+      color = 'Feature Set'
+    ) +
+    
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13, margin = margin(b = 4)),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10)),
+      
+      plot.margin = margin(30, 20, 20, 20),
+      axis.title.x = element_text(margin = margin(t = 9), size = 10),
+      axis.title.y = element_text(margin = margin(r = 9), size = 10),
+      
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold", size = 10),
+      
+      panel.grid.minor = element_blank(),
+    )
+}
+
+draw_rf_importance <- function(rf_model) {
+  
+  imp_vector <- ranger::importance(rf_model$finalModel)
+  
+  imp_df <- data.frame(
+    feature = names(imp_vector),
+    importance = as.numeric(imp_vector) 
+  ) %>% 
+    arrange(importance) %>% 
+    mutate(feature = factor(feature, levels = feature))
+  
+  ggplot(imp_df, aes(x = importance, y = feature)) +
+    geom_col(fill = '#2b5c8f', width = 0.65) +
+    
+    geom_text(
+      aes(label = round(importance, 2)),
+      hjust = -0.2,
+      size = 3.3,
+      fontface = 'bold',
+      color = 'gray20'
+    ) +
+    
+    scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
+    
+    labs(
+      title = 'Random Forest — Feature Importance',
+      subtitle = 'Variable importance based on mean decrease in Gini impurity',
+      x = 'Variable Importance',
+      y = NULL
     ) +
     
     theme_minimal(base_size = 11) +

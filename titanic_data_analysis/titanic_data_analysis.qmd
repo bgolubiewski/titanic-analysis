@@ -32,6 +32,8 @@ library(cluster)
 library(mclust)
 library(pROC)
 library(car)
+library(ranger)
+library(kernlab)
 
 # Data manipulation and visualization
 library(tidyverse)
@@ -44,6 +46,7 @@ library(plotly)
 library(purrr)
 library(RColorBrewer)
 library(plot3D)
+library(rpart.plot)
 
 # Tables
 library(knitr)
@@ -68,6 +71,7 @@ source(here("R", "Modeling", "03_pam.R"))
 source(here("R", "Modeling", "04_agnes.R"))
 source(here("R", "Modeling", "05_log_regression.R"))
 source(here("R", "Modeling", "06_knn.R"))
+source(here("R", "Modeling", "07_decision_tree.R"))
 
 
 # Em dash —
@@ -1145,11 +1149,174 @@ draw_model_confusion_matrix(
 
 ```
 
-The confusion matrix (@fig-knn-cm) for the `Full + 2D MDS` model shows a higher specificity than sensitivity. The model correctly classifies $561$ non-survivors, corresponding to $54.15%$ of all observations, resulting in a specificity of $87.93%$. It produces $77$ false positives, which account for $7.43%$ of all observations.
+The confusion matrix (@fig-knn-cm) for the `Full + 2D MDS` model shows a higher specificity than sensitivity. The model correctly classifies $561$ non-survivors, corresponding to $54.15\%$ of all observations, resulting in a specificity of $87.93\%$. It produces $77$ false positives, which account for $7.43\%$ of all observations.
 
-Among survivors, the model correctly identifies $255$ cases, corresponding to $24.61%$ of all observations and a sensitivity of $64.07%$. The remaining $143$ survivors are incorrectly classified as non-survivors, representing $13.80%$ of all observations. Overall, false negatives are more frequent than false positives, indicating that the model misses more survivors than it incorrectly identifies non-survivors.
+Among survivors, the model correctly identifies $255$ cases, corresponding to $24.61\%$ of all observations and a sensitivity of $64.07\%$. The remaining $143$ survivors are incorrectly classified as non-survivors, representing $13.80\%$ of all observations. Overall, false negatives are more frequent than false positives, indicating that the model misses more survivors than it incorrectly identifies non-survivors.
 
+### Decision Tree
+
+The *Decision Tree* (DT) algorithm is a non-parametric method that makes predictions by recursively splitting the data based on the values of individual features. Since the model does not rely on distances between observations, the features were not standardized within the cross-validation folds.
+
+#### Parameter Tuning
+
+The complexity parameter ($cp$) controls the size of the tree by determining whether a split should be made. Higher values of $cp$ result in simpler trees, while lower values allow the tree to grow more complex.
+
+```{r}
+#| label: fig-dt-tuning
+#| fig-cap: 'Optimization of hyperparameter $cp$ across tested feature spaces.'
+
+draw_dt_tuning(dt_models)
+```
+
+To find the optimal Complexity Parameter ($cp$) for each feature space, values ranging from $0.002$ to $0.05$ were evaluated using 10-fold CV (@fig-dt-tuning). The optimal settings favor relatively unpruned trees: $cp = 0.002$ for `Full Features` and `2D MDS`, $cp = 0.006$ for `Full + 2D MDS`, and $cp = 0.012$ for `2D PCA`.
+
+Performance drops across all feature spaces as $cp$ increases, indicating that stronger pruning removes informative splits and reduces predictive performance. Notably, `Full Features` shows the highest tolerance to pruning, maintaining a strong $\text{AUC} \approx 0.84$ up to $cp \approx 0.02$, while the other feature spaces lose predictive performance more quickly.
+
+```{r}
+#| label: fig-dt-tree
+#| fig-cap: 'Final pruned Decision Tree structure trained on Full Features.'
+#| fig-width: 12
+#| fig-height: 10
+#| out-width: "100%"
+#| fig-align: "center"
+
+draw_decision_tree(dt_models[['Full Features']])
+```
+
+The structure of the decision tree trained on `Full Features` ($cp = 0.002$) is presented in @fig-dt-tree.
+
+As expected, sex serves as the primary root split, while passenger class, age, and family size determine subsequent branches. While the upper levels provide clear, general rules, the lower nodes capture more detailed interactions between features because the tree is less heavily pruned.
+
+
+#### Comparing Different Feature Spaces
+
+To evaluate classification performance across feature spaces for the tuned Decision Tree models, ROC curves were generated using out-of-fold CV predictions (@fig-dt-roc).
+
+```{r}
+#| label: fig-dt-roc
+#| fig-cap: 'ROC Curves Comparison Across Feature Spaces for the Decision Tree.'
+
+draw_roc_curve(dt_models, method_name = 'Decision Tree', custom_title = 'ROC Curves — Decision Tree')
+
+```
+
+The ROC curves show that `Full Features` and `Full + 2D MDS` achieve the highest overall performance, closely followed by `2D MDS`. Decision trees work well with the raw categorical features and the non-linear Gower MDS coordinates because they can effectively separate observations using simple threshold-based splits. In contrast, `2D PCA` performs significantly worse.
+
+#### Decision Tree Performance
+
+All classification metrics were calculated from pooled out-of-fold predictions obtained through 10-fold CV (@tbl-dt-performance).
+
+```{r}
+#| label: tbl-dt-performance
+#| tbl-cap: 'Decision Tree Performance Metrics Across Feature Spaces (10-fold CV).'
+#| cap-location: bottom
+
+create_simple_table(dt_performance, colnames = c(
+  'Feature Set', 'AUC', 'Accuracy', 'Sensitivity', 'Specificity', 'F1'
+))
+
+```
+
+The `Full Feature` space achieved the best results, with the highest $\text{AUC}$ ($0.8336$), $\text{Sensitivity}$ ($0.6809$), and $\text{F1}$ score ($0.7354$), closely followed by the hybrid space (`Full + 2D MDS`). `2D PCA` performed noticeably worse across all metrics, with an $\text{AUC}$ of only $0.6756$. 
+
+
+
+To further examine the classification errors of the `Full Features` model, its out-of-fold confusion matrix is shown below (@fig-dt-cm).
+
+```{r}
+#| label: fig-dt-cm
+#| fig-cap: "Confusion Matrix Heatmap for Best Model (Full Features)."
+#| cap-location: bottom
+
+draw_model_confusion_matrix(
+  dt_models[['Full Features']],
+  custom_title = 'Confusion Matrix — Decison Tree',
+  custom_subtitle = 'Full Features dataset')
+
+```
+
+The confusion matrix for the `Full Features` model shows a higher specificity than sensitivity. The model correctly classifies $570$ non-survivors, corresponding to $55.02%$ of all observations, resulting in a specificity of $89.34\%$. It produces $68$ false positives, which account for $6.56\%$ of all observations.
+
+Among survivors, the model correctly identifies $271$ cases, corresponding to a sensitivity of $68.09%$. The remaining $127$ survivors are incorrectly classified as non-survivors, representing $12.26\%$ of all observations. Overall, false negatives are more frequent than false positives, indicating that the model misses more survivors than it incorrectly identifies non-survivors.
+
+### Random Forest
+
+Random Forest algorithm is a non-parametric method that combines multiple decision trees to make predictions. Each tree is trained using a randomly selected subset of observations and features, and the final prediction is obtained by combining the predictions of individual trees. Since the model does not rely on distances between observations, the features were not standardized within CV folds.
+
+#### Model Configuration and Tuning
+
+To improve the stability and performance of the models, several settings were changed:
+
+* Ensemble size --- 1000 classification trees were used to obtain more stable out-of-fold probability predictions.
+* Parameter Tuning --- models were tested with different values of `mtry` (the number of features considered at each split), while `min.node.size` was set to 20. Model performance was evaluated using 10-fold CV.
+
+```{r}
+#| label: fig-rf-tuning
+#| fig-cap: 'Random Forest Model Configuration and Tuning'
+#| fig-subcap: 
+#|   - "Optimization of parameter $mtry$ across tested feature spaces."
+#|   - "Feature Importance of `Full Features` model."
+#| layout-ncol: 2
+
+draw_rf_tuning(rf_models)
+draw_rf_importance(rf_models[['Full Features']])
+
+```
+
+The tuning results (@fig-rf-tuning-1) show that the optimal parameters vary depending on the dataset. For the `Full Features` model, the highest performance was achieved with $mtry = 5$ ($\text{AUC} \approx 0.87$). This suggests that considering several predictors at each split helped the model capture crucial relationships between variables. In the simpler `2D PCA` and `2D MDS` representations, the best results were obtained with $mtry = 1$, which shouldn't be surprising as there are only two variables in those sets (two dimensions of MDS/PCA).
+
+The feature importance results for `Full Features` (@fig-rf-tuning-2) are also consistent with the patters observed in the previous models (see @fig-dt-tree and @tbl-lr-coefficients). `sexmale` is by far the most important variable, with Gini importance of approximately $130$. Other variables, including `fare`, `age`, `class3rd`, and `family_size`, also have a noticeable influence on the model's predictions. In contrast, the embarkation variables have relatively little impact.
+
+#### Comparing Different Feature Spaces
+
+To evaluate classification performance across different feature sets for the tuned Random Forest models, ROC curves were generated using out-of-fold CV predictions (@fig-rf-roc).
+
+```{r}
+#| label: fig-rf-roc
+#| fig-cap: 'ROC Curves Comparison Across Feature Spaces for Random Forest.'
+
+draw_roc_curve(rf_models, method_name = 'Random Forest', custom_title = 'ROC Curves — Random Forest')
+
+```
+The ROC curves show very similar performance for `Full Features` and `Full + 2D MDS`, with `2D MDS` performing only slightly worse. In contrast, `2D PCA` consistently shows the lowest performance.
+
+#### Random Forest Performance
+
+All classification metrics were calculated from pooled out-of-fold predictions obtained through 10-fold CV (@tbl-rf-performance).
+
+```{r}
+#| label: tbl-rf-performance
+#| tbl-cap: 'Random Forest Performance Metrics Across Feature Spaces (10-fold CV).'
+#| cap-location: bottom
+
+create_simple_table(rf_performance, colnames = c(
+  'Feature Set', 'AUC', 'Accuracy', 'Sensitivity', 'Specificity', 'F1'
+))
+
+```
+
+The `Full Features` model achieved the best overall performance, with an $\text{AUC}$ of $0.8668$ and $\text{Sensitivity}$ of $0.6558$. The hybrid model (`Full + 2D MDS`) achieved the highest $\text{Accuracy}$ ($0.8079$), $\text{Specificity}$ ($0.9138$), and $\text{F1}$ score ($0.7185$). As in the previous models, `2D PCA` performed noticeably worse, with an $\text{AUC}$ of $0.7041$.
+
+Compared to the single decision tree, the Random Forest model achieves higher $\text{AUC}$ scores across all evaluated feature spaces. Specifically, for `Full Features`, the $\text{AUC}$ increases from $0.8336$ to $0.8668$. While other metrics remain very similar because much of the information related to survival is captured by simple binary splits, the Random Forest provides superior class separation, more reliable probability estimates, and greater overall stability.
+
+To take a closer look at the classification errors of the `Full Features` model, its out-of-fold confusion matrix is shown in @fig-rf-cm.
+
+```{r}
+#| label: fig-rf-cm
+#| fig-cap: "Confusion Matrix Heatmap for Best Model (Full Features)."
+#| cap-location: bottom
+
+draw_model_confusion_matrix(
+  rf_models[['Full Features']],
+  custom_title = 'Confusion Matrix — Random Forest',
+  custom_subtitle = 'Full Features dataset')
+
+```
+
+The confusion matrix for the `Full Features` model shows higher specificity than sensitivity. The model correctly classifies $570$ non-survivors, which represents $55.02%$ of all observations and corresponds to a specificity of $89.34%$. There are $68$ false positives, accounting for $6.56%$ of the sample. 
+
+For survivors, the model correctly identifies $261$ cases, or $25.19%$ of all observations, resulting in a sensitivity of $65.58%$. The remaining $137$ survivors are incorrectly classified as non-survivors, representing $13.22%$ of the sample.
+
+Overall, the model produces more false negatives than false positives, meaning that it is more likely to classify survivors as non-survivors than the other way around.
 
 ## Results
-
-Wskazówka na przyszłość (do sekcji porównawczej modeli):Zauważ ciekawą zależność: w porównaniu do Regresji Logistycznej, $k$-NN ma wyższą swoistość (Specificity $87.93\%$ vs $85.27\%$), ale niższą czułość (Sensitivity $64.07\%$ vs $71.61\%$). To świetny punkt do wykorzystania w podsumowaniu całego raportu przy wyborze "najlepszego" modelu w zależności od priorytetów.
