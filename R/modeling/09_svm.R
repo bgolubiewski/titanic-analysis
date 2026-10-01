@@ -10,14 +10,14 @@ datasets_svm <- list(
 )
 
 svm_grid <- expand.grid(
-  sigma = c(0.01, 0.03, 0.05, 0.1, 0.2),
-  C = c(0.25, 0.5, 1, 2, 4, 8, 16)
+  sigma = c(0.005, 0.01, 0.03, 0.05, 0.1, 0.2),
+  C = c(0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128)
 )
 
 
-svm_models <- lapply(names(datasets_rf), function(name) {
+svm_models <- lapply(names(datasets_svm), function(name) {
   
-  df <- datasets_rf[[name]]
+  df <- datasets_svm[[name]]
   
   set.seed(SEED)
   train(

@@ -20,6 +20,7 @@ execute:
 ```{r}
 #| label: setup
 #| output: false
+#| cache: true        # set to false to rerun after modifying files loaded with source()
 
 # Data analysis
 library(DataExplorer)
@@ -72,9 +73,13 @@ source(here("R", "Modeling", "04_agnes.R"))
 source(here("R", "Modeling", "05_log_regression.R"))
 source(here("R", "Modeling", "06_knn.R"))
 source(here("R", "Modeling", "07_decision_tree.R"))
+source(here("R", "Modeling", "08_random_forest.R"))
+source(here("R", "Modeling", "09_svm.R"))
+source(here("R", "Modeling", "10_modeling_results.R"))
 
 
 # Em dash —
+# Pound £
 ```
 
 # Introduction
@@ -83,9 +88,13 @@ The Titanic disaster is the world's most famous shipwreck. Beyond it's historica
 
 These characteristics provide an opportunity to examine how different passenger characteristics were associated with their chances of survival. The aim of this report is to explore the structure of the dataset and to identify the patters that may help explain differences in survival outcomes.
 
-The analysis begins with a general overview of the data, including it's structure, variable types, and missing values, followed by the necessary data preparation. We then conduct an exploratory data analysis to examine the distributions of individual variables and explore relationships between them.
+The analysis begins with a general overview of the data, including its structure, variable types, and missing values, followed by the necessary data preparation. We then conduct an exploratory data analysis (EDA) to examine the distributions of individual variables and explore relationships between them.
 
-To further investigate the underlying structure of the data, Principal Component Analysis (PCA) and Multidimensional Scaling (MDS) were applied....
+To further investigate the structure of the data, Principal Component Analysis (PCA) and Multidimensional Scaling (MDS) are applied as dimensionality reduction techniques. These methods provide a lower-dimensional representation of the data while preserving its most important structure.
+
+The next stage focuses on unsupervised learning. Two clustering methods are applied to the learning set to identify groups of passengers with similar characteristics and examine whether these groups are associated with different survival outcomes.
+
+Finally, several supervised classification models are trained on the learning set and compared based on their predictive performance. The best-performing model is then evaluated on an unseen test set to assess its generalization ability and determine whether the patterns identified during training are maintained on new data.
 
 # Data Overview
 
@@ -275,11 +284,11 @@ wrap_plots(plots, ncol = 2)
 
 ```
 
-Non-survivors constitute majority of passengers, with a fatality rate of 61,6%. This is consistent with the distribution of `lifeboat` (@tbl-lifeboat-distr) --- when the corresponding lifeboat categories are combined, the proportion of passengers who did not board a lifeboat is broadly consistent with the proportion of non-survivors. The small discrepancy can be attributed primarily to missing values.
+Non-survivors constitute majority of passengers, with a fatality rate of $61,6\%$. This is consistent with the distribution of `lifeboat` (@tbl-lifeboat-distr) --- when the corresponding lifeboat categories are combined, the proportion of passengers who did not board a lifeboat is broadly consistent with the proportion of non-survivors. The small discrepancy can be attributed primarily to missing values.
 
-Males account for nearly two-thirds of the passengers. The age distribution is concentrated in `young adult` and `adult` groups, which together account for almost 90% of all passengers. More than half of the passengers traveled in 3rd class, making it more numerous than 1st and 2nd class combined. Most passengers traveled without relatives, accounting for approximately 60% of all observations. Although `small` family groups represent 33% of observations, larger families are rare.
+Males account for nearly two-thirds of the passengers. The age distribution is concentrated in `young adult` and `adult` groups, which together account for almost $90\%$ of all passengers. More than half of the passengers traveled in 3rd class, making it more numerous than 1st and 2nd class combined. Most passengers traveled without relatives, accounting for approximately $60\%$ of all observations. Although `small` family groups represent $33\%$ of observations, larger families are rare.
 
-The distribution of departure locations is heavily imbalanced, with Southampton (`S`) accounting for 70.0% of passengers, followed by Cherbourg (`C`) with 20.6% and Queenstown (`Q`) with 9.4%.
+The distribution of departure locations is heavily imbalanced, with Southampton (`S`) accounting for $70.0\%$ of passengers, followed by Cherbourg (`C`) with $20.6\%$ and Queenstown (`Q`) with $9.4\%$.
 
 ```{r}
 #| label: tbl-lifeboat-distr
@@ -422,7 +431,7 @@ wrap_plots(plots, nrow = 3) +
   theme(legend.position = 'bottom')
 ```
 
-A far more pronounced divergence appears in `fare` (displayed on a $\log_{10}$ scale to handle skewness). The lower end of fare spectrum is dominated by non-survivors, producing a sharp red peak. Beyond \$30, and particularly \$100, the density shifts in favour of survivors. This further confirms that better class of travel increased the likelihood of survival.
+A far more pronounced divergence appears in `fare` (displayed on a $\log_{10}$ scale to handle skewness). The lower end of fare spectrum is dominated by non-survivors, producing a sharp red peak. Beyond $£30$, and particularly $£100$, the density shifts in favour of survivors. This further confirms that better class of travel increased the likelihood of survival.
 
 ## Multivariate Analysis
 
@@ -432,7 +441,7 @@ Figures in @fig-multi-socioecon and @fig-multi-dynamics examine how socio-demogr
 
 The heatmap in @fig-multi-socioecon-1 combines age, passenger class and sex, revealing that the patterns observed in the earlier analyses (see @seq-qual-vs-surv) persist when these characteristics are considered simultaneously.
 
--   Sex remains the strongest factor associated with survival, but the size of the difference between females and males varied considerably by passenger class. Adult females in 1st and 2nd class had very high survival rates, reaching $97.7\%–97.8\%$ in 1st class and $87.2\%–88.1\%$ in 2nd class for young adults and adults, respectively. Senior females in 1st class also maintained high survival ($87.5\%$).
+-   Sex remains the strongest factor associated with survival, but the size of the difference between females and males varied considerably by passenger class. Adult females in 1st- and 2nd-class had very high survival rates, reaching $97.7\%–97.8\%$ in 1st-class and $87.2\%–88.1\%$ in 2nd-class for young adults and adults, respectively. Senior females in 1st-class also maintained high survival ($87.5\%$).
 
     In contrast, males experienced high mortality across all classes: 2nd-class adult male survival fell to $6.7\%$ ($11.0\%$ for young adults), while 1st-class senior male survival dropped to just $6.2\%$.
 
@@ -497,7 +506,7 @@ df_temp <- titanic_clean %>%
 
 ```
 
--   Women were strongly overrepresented among lifeboat occupants in 1st and 2nd class. Females accounted for $68.7%$ of 1st-class and $77.4%$ of 2nd-class lifeboat occupants. This pattern is consistent with the historical application of *Birkenhead drill* (*women and children first*). The particularly high female representation in the upper classes may also reflect their easier access to the boat deck and the more orderly evacuation during the early stages of the sinking. Importantly, the Titanic did not begin with a single, clearly announced general evacuation, as the crew initially sought to avoid unnecessary panic. This meant that passengers depended heavily on information provided by crew members and on their ability to reach the boat deck.
+-   Women were strongly overrepresented among lifeboat occupants in 1st- and 2nd-class. Females accounted for $68.7%$ of 1st-class and $77.4%$ of 2nd-class lifeboat occupants. This pattern is consistent with the historical application of *Birkenhead drill* (*women and children first*). The particularly high female representation in the upper classes may also reflect their easier access to the boat deck and the more orderly evacuation during the early stages of the sinking. Importantly, the Titanic did not begin with a single, clearly announced general evacuation, as the crew initially sought to avoid unnecessary panic. This meant that passengers depended heavily on information provided by crew members and on their ability to reach the boat deck.
 
 -   The gender gap was considerably smaller among 3rd-class lifeboat occupants. In 3rd-class, females accounted for $56.3%$ of lifeboat occupants, compared with $43.7%$ males. This relatively small difference should be interpreted in the context of the gender composition of 3rd-class, which was more male-dominated ($69.53\%$ male).
 
@@ -509,7 +518,7 @@ The boxplot in @fig-multi-socioecon-2 illustrates the distribution of ticket far
 
 -   Among 1st-class passengers, higher fares were associated with a clear survival advantage. Both the median fare and the mean fare, indicated by the yellow diamond, were noticeably higher among survivors than non-survivors.
 
--   A slight positive shift in the mean fare can also be observed among 2nd-class survivors, although the difference is less pronounced. In 3rd class, however, this effect largely disappears. The distributions, medians, and mean fares of survivors and non-survivors are nearly identical, suggesting that paying a slightly higher fare within 3rd class did not provide a meaningful survival advantage.
+-   A slight positive shift in the mean fare can also be observed among 2nd-class survivors, although the difference is less pronounced. In 3rd-class, however, this effect largely disappears. The distributions, medians, and mean fares of survivors and non-survivors are nearly identical, suggesting that paying a slightly higher fare within 3rd-class did not provide a meaningful survival advantage.
 
 ```{r}
 #| label: fig-multi-dynamics
@@ -555,7 +564,7 @@ The plot in @fig-multi-dynamics-2 illustrates the relationship between embarkati
 
 After accounting for sex and passenger class, the port of embarkation shows little independent association with survival:
 
--   In 3rd class, passengers embarking at Cherbourg had slightly higher survival rates than those embarking at Southampton. However, this difference is likely related to differences in passenger composition across the ports. Among Cherbourg passengers, $52.22\%$ were in 1st-class, $10.37\%$ in 2nd-class, and $37.40\%$ in 3rd-class. In conjunction with the findings from @fig-multi-socioecon-1, this difference is therefore not unexpected.
+-   In 3rd-class, passengers embarking at Cherbourg had slightly higher survival rates than those embarking at Southampton. However, this difference is likely related to differences in passenger composition across the ports. Among Cherbourg passengers, $52.22\%$ were in 1st-class, $10.37\%$ in 2nd-class, and $37.40\%$ in 3rd-class. In conjunction with the findings from @fig-multi-socioecon-1, this difference is therefore not unexpected.
 -   Queenstown passengers were concentrated almost entirely in 3rd-class ($91.87\%$). The extreme survival rates observed for 1st and 2nd-class are therefore likely the result of very small sample sizes rather than meaningful patterns.
 
 ## EDA Summary
@@ -763,7 +772,7 @@ It is also worth noting a technical difference in the PCA results. On the traini
 
 ## Clustering
 
-### Partitioning Around Medoids (PAM)
+### Partitioning Around Medoids (PAM) {#sec-pam}
 
 The *Partitioning Around Medoids* (PAM) algorithm is a clustering method used to divide a dataset into a predefined number of distinct groups based on the distances between observations. Unlike methods like k-Means, which represent clusters using centroids, PAM uses medoids --- actual observations from the dataset that serve as representative members of their respective cluster.
 
@@ -790,7 +799,7 @@ create_simple_table(cluster_profiles_k6_pam, c('Cluster', 'Count', 'Rate of Surv
 
 @fig-pam-2-6 shows the *PAM* clusters assignments projected onto the 2D *MDS* space. Comparing this result with the feature-coloured MDS plots in @fig-mds-2d shows that, for $K = 2$, the main and only distinctions between the two clusters is sex.
 
-Using $K = 6$ produces a more detailed segmentation of the passengers (@tbl-pam-6). The resulting clusters appear to be differentiated mainly by sex and passenger class (and naturally fare). Notably, despite the target variable `survived` being excluded from the distance calculation, the resulting clusters nevertheless show clear differences in survival rates. This is particularly visible in clusters 1 and 6 --- cluster 1 (predominantly 3rd-class males) has a low survival rate of $13\%$, while cluster 6  (predominantly 2nd-class females) reaches a rate of $90.8\%$. Thus, even though survival was not included in the clustering procedure, the resulting passenger profiles capture characteristics that are strongly associated with survival.
+Using $K = 6$ produces a more detailed segmentation of the passengers (@tbl-pam-6). The resulting clusters appear to be differentiated mainly by sex and passenger class (and naturally fare). Notably, despite the target variable `survived` being excluded from the distance calculation, the resulting clusters nevertheless show clear differences in survival rates. This is particularly visible in clusters 1 and 6 --- cluster 1 (predominantly 3rd-class males) has a low survival rate of $13\%$, while cluster 6 (predominantly 2nd-class females) reaches a rate of $90.8\%$. Thus, even though survival was not included in the clustering procedure, the resulting passenger profiles capture characteristics that are strongly associated with survival.
 
 ```{r}
 #| label: fig-pam-2-6
@@ -807,7 +816,7 @@ p1 + p2 &
 
 #### Reduced feature space (PCA & MDS)
 
-To asses how dimensionality reduction affects *PAM* clustering, the algorithm was applied directly to the two-dimensional spaces generated by *MDS* and *PCA*. The resulting partition are shown in @fig-pam-pca-mds. 
+To asses how dimensionality reduction affects *PAM* clustering, the algorithm was applied directly to the two-dimensional spaces generated by *MDS* and *PCA*. The resulting partition are shown in @fig-pam-pca-mds.
 
 In the *MDS* projection, *PAM* produces the same sex-driven clustering pattern observed in the full Gower space. This is expected because *MDS* was constructed from the same pairwise Gower distances used by *PAM*, preserving the main structure of the original dissimilarity space.
 
@@ -830,11 +839,10 @@ p4 <- draw_pca_scatterplot(df = pca_train_extended, target_col = 'cluster_pam', 
 
 ```
 
-
 #### PAM Performance
 
 To compare the PAM configurations with the actual `surived` labels, four clustering setups were evaluated using the metrics in @tbl-pam-metrics. Cluster agreement with the true labels is measured using the *Adjusted Rand Index* (ARI), where 0 indicates chance-level agreement and 1 indicates a perfect match. Traditional classification metrics (`Accuracy, Sensitivity, Specificity`) are calculated after assigning each cluster to either `Yes` or `No` survival value based on majority.
- 
+
 ```{r}
 #| label: tbl-pam-metrics
 #| tbl-cap: 'Performance metrics for PAM clustering configurations benchmarked against actual survival labels.'
@@ -849,11 +857,11 @@ create_simple_table(pam_metrics_summary, colnames = c('Method',
 
 The findings are:
 
-- PAM in the 2D MDS space gives the same performance as PAM using the full Gower space ($ARI=0.3038$, $Accuracy=77.70\%$), suggesting that the two-dimensional MDS representation retains the main structure relevant to this clustering.
+-   PAM in the 2D MDS space gives the same performance as PAM using the full Gower space ($ARI=0.3038$, $Accuracy=77.70\%$), suggesting that the two-dimensional MDS representation retains the main structure relevant to this clustering.
 
-- PAM performs substantially worse in the PCA space ($ARI=0.1015$, $Accuracy=66.60\%$), with particularly low sensitivity ($44.97\%$). This indicates that the PCA representation is less suitable for this clustering task.
+-   PAM performs substantially worse in the PCA space ($ARI=0.1015$, $Accuracy=66.60\%$), with particularly low sensitivity ($44.97\%$). This indicates that the PCA representation is less suitable for this clustering task.
 
-- The six-cluster solution has a lower $\text{ARI}$ ($0.1232$) but similar accuracy ($77.51\%$) and high specificity ($93.42\%$). The additional clusters therefore provide a more detailed partition, although this does not translate into stronger overall agreement with the survival labels.
+-   The six-cluster solution has a lower $\text{ARI}$ ($0.1232$) but similar accuracy ($77.51\%$) and high specificity ($93.42\%$). The additional clusters therefore provide a more detailed partition, although this does not translate into stronger overall agreement with the survival labels.
 
 Overall, within the PAM configurations considered here, the Gower-based representation performs better than PCA, while the 2D MDS representation retains the clustering structure of the full Gower space. These results provide a useful baseline for comparison with the AGNES results presented next.
 
@@ -885,7 +893,7 @@ The process of merging clusters can be performed using several different linkage
 get_dendrogram_plot()
 ```
 
-@fig-agnes-dendrogram-2-6 shows the hierarchical clustering structure produced by *AGNES* using Ward's linkage method, with the trees coloured according to the resulting cluster assignments for $K = 2$ and $K = 6$. In a dendrogram, Height represents the dissimilarity between clusters at the point of their merge. The large increase in Height at the first split (Height $\approx 6.5$) indicates a substantial difference between the two resulting branches, suggesting a clear separation of the dataset into two major clusters. Those largely correspond to sex (see @fig-agnes-2-6). 
+@fig-agnes-dendrogram-2-6 shows the hierarchical clustering structure produced by *AGNES* using Ward's linkage method, with the trees coloured according to the resulting cluster assignments for $K = 2$ and $K = 6$. In a dendrogram, Height represents the dissimilarity between clusters at the point of their merge. The large increase in Height at the first split (Height $\approx 6.5$) indicates a substantial difference between the two resulting branches, suggesting a clear separation of the dataset into two major clusters. Those largely correspond to sex (see @fig-agnes-2-6).
 
 When the hierarchy is cut at $K = 6$, each of these branches is further divided into three distinct sub-clusters. Those occur at lower heights, reflecting smaller differences within these groups. More precise characteristics summary of the $K = 6$ tree can be found in @tbl-agnes-6. The resulting clusters are largely consistent with those obtained using *PAM* (@tbl-pam-6). The main difference can be observed in the fourth cluster, where the average survival rate increases to $25\%$, compared with $17\%$ for the corresponding *PAM* cluster.
 
@@ -916,7 +924,6 @@ p2 <- draw_mds_2d(var = 'cluster_agnes_k6', df = mds_train_extended, custom_titl
 p1 + p2 &
   theme(legend.position = 'bottom')
 ```
-
 
 #### Reduced feature space (PCA & MDS)
 
@@ -961,28 +968,28 @@ create_simple_table(agnes_metrics_summary, colnames = c('Method',
 
 The key takeaways are:
 
-- On the full Gower matrix ($K=2$), *AGNES* achieves an $ARI$ of $0.2802$ and an $Accuracy$ of $76.54\%$). Applying *AGNES* directly on the 2D *MDS* projection results in slightly higher scores ($ARI = 0.3038$, $Accuracy = 77.70\%$). This difference can be attributed to the different spatial representations --- in the full Gower space, Ward linkage assigns some 1st-class male passengers to the same cluster as females, increasing $Sensitivity$ ($73.87\%$) while slightly reducing overall accuracy compared with the sex-driven separation in MDS space.
+-   On the full Gower matrix ($K=2$), *AGNES* achieves an $ARI$ of $0.2802$ and an $Accuracy$ of $76.54\%$). Applying *AGNES* directly on the 2D *MDS* projection results in slightly higher scores ($ARI = 0.3038$, $Accuracy = 77.70\%$). This difference can be attributed to the different spatial representations --- in the full Gower space, Ward linkage assigns some 1st-class male passengers to the same cluster as females, increasing $Sensitivity$ ($73.87\%$) while slightly reducing overall accuracy compared with the sex-driven separation in MDS space.
 
-- The choice of dissimilarity representation appears to have a greater impact on the clustering results than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or after 2D *MDS* projection, results in similar alignment with the survival labels, with approximately $78\%$ $Accuracy$ and an $ARI$ of around $0.30$. In contrast, clustering based on Euclidean distances in the *PCA* space achieves substantially lower alignment, at approximately $67\%$ $Accuracy$ and $ARI \approx 0.10$.
+-   The choice of dissimilarity representation appears to have a greater impact on the clustering results than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or after 2D *MDS* projection, results in similar alignment with the survival labels, with approximately $78\%$ $Accuracy$ and an $ARI$ of around $0.30$. In contrast, clustering based on Euclidean distances in the *PCA* space achieves substantially lower alignment, at approximately $67\%$ $Accuracy$ and $ARI \approx 0.10$.
 
-- Increasing the number of clusters to $K = 6$ maintains the same overall $Accuracy$ of $76.54\%$, while increasing $Specificity$ to $92.95\%$. The additional clusters provide a more detailed partition of the data, but this does not result in stronger overall agreement with the survival labels.
+-   Increasing the number of clusters to $K = 6$ maintains the same overall $Accuracy$ of $76.54\%$, while increasing $Specificity$ to $92.95\%$. The additional clusters provide a more detailed partition of the data, but this does not result in stronger overall agreement with the survival labels.
 
 ### Clustering --- Summary
 
-- Both *PAM* and *AGNES* with Ward linkage produce very similar cluster assignments. Despite not using the survived variable, both methods consistently identify sex as the main factor driving the observed structure of the dataset.
+-   Both *PAM* and *AGNES* with Ward linkage produce very similar cluster assignments. Despite not using the survived variable, both methods consistently identify sex as the main factor driving the observed structure of the dataset.
 
-- The choice of dissimilarity representation matters far more than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or via 2D *MDS*, achieves baseline classification alignment of $\approx 78\%$ $Accuracy$ ($ARI \approx 0.30$). In contrast, Euclidean metrics applied to *PCA* components fail across both algorithms ($\approx 67\%$ $Accuracy$, $ARI \approx 0.10$).
+-   The choice of dissimilarity representation matters far more than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or via 2D *MDS*, achieves baseline classification alignment of $\approx 78\%$ $Accuracy$ ($ARI \approx 0.30$). In contrast, Euclidean metrics applied to *PCA* components fail across both algorithms ($\approx 67\%$ $Accuracy$, $ARI \approx 0.10$).
 
-- *MDS* proves to be an ideal feature compressor for mixed-type clustering in this dataset. It retains virtually $100\%$ of the cluster separating information of the full Gower matrix while drastically simplifying the dimensionality.
+-   *MDS* proves to be an ideal feature compressor for mixed-type clustering in this dataset. It retains virtually $100\%$ of the cluster separating information of the full Gower matrix while drastically simplifying the dimensionality.
 
 ## Supervised Learning
 
 In this section, we move on to supervised learning methods. To examine how dimensionality reduction affects classification accuracy, each algorithm was evaluated using four different feature subsets:
 
-* Full Dataset
-* 2D MDS
-* 2D PCA
-* Full + 2D MDS --- a new addition that combines preprocessed features with the MDS dimensions.
+-   Full Dataset
+-   2D MDS
+-   2D PCA
+-   Full + 2D MDS --- a new addition that combines preprocessed features with the MDS dimensions.
 
 To ensure a random-proof evaluation and avoid data leakage, all models are evaluated using 10-fold Cross-Validation (CV). All feature processing steps, such as centering and scaling, were performed separately within each training fold.
 
@@ -994,7 +1001,7 @@ To address this, we use Logistic Regression, which models the log-odds of surviv
 
 $$\ln\left(\frac{p}{1-p}\right) = \beta_0 + \beta_1 X_1 + \dots + \beta_k X_k$$
 
-where $p = P(Y = \text{"Yes"} \mid X)$ represents the conditional probability of survival given the feature vector $X$. 
+where $p = P(Y = \text{"Yes"} \mid X)$ represents the conditional probability of survival given the feature vector $X$.
 
 In addition to providing a fast and interpretable baseline classifier, Logistic Regression allows the effects of individual features to be expressed through Odds Ratios ($e^\beta$). These provide a direct interpretation of how a one-unit increase in a feature affects the odds of survival, while keeping the other variables constant.
 
@@ -1002,13 +1009,13 @@ In addition to providing a fast and interpretable baseline classifier, Logistic 
 
 To evaluate the impact of individual features, the logistic regression coefficients ($\beta$) are converted into Odds Ratios ($OR = e^\beta$). @tbl-lr-coefficients presents the estimated coefficients, Odds Ratio, confidence intervals, and statistical significance levels for each variable in the full model:
 
-* Odds Ratio ($OR$) --- shows how a given variable is associated with the odds of survival. Values above $1$ indicate higher odds, while values below $1$ indicate lower odds, with other variables held constant.
+-   Odds Ratio ($OR$) --- shows how a given variable is associated with the odds of survival. Values above $1$ indicate higher odds, while values below $1$ indicate lower odds, with other variables held constant.
 
-* $95\%$ Confidence Interval ($95\%$ CI) --- provides a range of plausible values for the Odds Ratio. An interval that does not include $1.0$ indicates statistical significance at the $\alpha = 0.05$ level.
+-   $95\%$ Confidence Interval ($95\%$ CI) --- provides a range of plausible values for the Odds Ratio. An interval that does not include $1.0$ indicates statistical significance at the $\alpha = 0.05$ level.
 
-* $p$-Value --- based on the Wald $z$-test, it tests null hypothesis that the variable has no effect on survival ($\beta = 0$, equivalent to $OR = 1.0$).
+-   $p$-Value --- based on the Wald $z$-test, it tests null hypothesis that the variable has no effect on survival ($\beta = 0$, equivalent to $OR = 1.0$).
 
-* Significance --- significance levels are indicated by `***` ($p < 0.001$), `**` ($p < 0.01$), `*` ($p < 0.05$), and `ns` (not significant).
+-   Significance --- significance levels are indicated by `***` ($p < 0.001$), `**` ($p < 0.01$), `*` ($p < 0.05$), and `ns` (not significant).
 
 ```{r}
 #| label: tbl-lr-coefficients
@@ -1023,15 +1030,15 @@ create_simple_table(
 
 The fitted logistic regression model confirms the main survival patterns identified during the unsupervised analysis:
 
-- Sex (`sexmale`) --- being male is strongly associated with lower survival odds ($OR = 0.277, p < 0.001$). Holding other variables constant, male passengers had 72.3% lower survival odds than female passengers ($1 - 0.277 = 0.723$).
+-   Sex (`sexmale`) --- being male is strongly associated with lower survival odds ($OR = 0.277, p < 0.001$). Holding other variables constant, male passengers had 72.3% lower survival odds than female passengers ($1 - 0.277 = 0.723$).
 
-- Passenger Class (`class2nd`, `class3rd`) --- survival odds were lower in both 2nd- and 3rd-class compared with 1st-class. For 3rd-class, the odds were $70.2\%$ lower ($OR = 0.298, p < 0.001$), while for 2nd-class they were $38.5\%$ lower ($OR = 0.615, p < 0.001$).
+-   Passenger Class (`class2nd`, `class3rd`) --- survival odds were lower in both 2nd- and 3rd-class compared with 1st-class. For 3rd-class, the odds were $70.2\%$ lower ($OR = 0.298, p < 0.001$), while for 2nd-class they were $38.5\%$ lower ($OR = 0.615, p < 0.001$).
 
-- Age (`age`) --- negatively associated with survival ($OR = 0.592, p < 0.001$). A one-standard-deviation increase in age is associated with a $40.8\%$ decrease in survival odds.
+-   Age (`age`) --- negatively associated with survival ($OR = 0.592, p < 0.001$). A one-standard-deviation increase in age is associated with a $40.8\%$ decrease in survival odds.
 
-- Family Size (`family_size`) --- larger family sizes are associated with lower survival odds ($OR = 0.746, p = 0.0031$). A one-standard-deviation increase in family size corresponds to a $25.4\%$ decrease in survival odds.
+-   Family Size (`family_size`) --- larger family sizes are associated with lower survival odds ($OR = 0.746, p = 0.0031$). A one-standard-deviation increase in family size corresponds to a $25.4\%$ decrease in survival odds.
 
-- Fare & Embarkation (`fare`, `embarkedS`, `embarkedQ`) --- passengers embarking at Southampton had lower survival odds than those embarking at Cherbourg ($OR = 0.805, p = 0.0258$). In contrast, fare was not statistically significant ($p = 0.8189$), suggesting that it provides little additional information about survival once passenger class is taken into account.
+-   Fare & Embarkation (`fare`, `embarkedS`, `embarkedQ`) --- passengers embarking at Southampton had lower survival odds than those embarking at Cherbourg ($OR = 0.805, p = 0.0258$). In contrast, fare was not statistically significant ($p = 0.8189$), suggesting that it provides little additional information about survival once passenger class is taken into account.
 
 #### Comparing Different Feature Spaces
 
@@ -1048,7 +1055,6 @@ draw_roc_curve(lr_models, method_name = 'Logistic Regression', custom_title = 'R
 As shown in @fig-lr-roc, the ROC curves display very similar performance for the `Full Features`, `2D MDS`, and the hybrid `Full + 2D MDS`, with the curves almost completely overlapping. Conversely, `2D PCA` performs significantly worse, further confirming that linear PCA fails to capture critical relationships that MDS preserves.
 
 **Note on Multicollinearity:** The hybrid `Full + 2D MDS` model shows substantial multicollinearity, as expected given that the MDS coordinates are derived from the same information as the original features. The VIF values are particularly high for the MDS coordinates ($VIF_x=86.87$, $VIF_y=137.42$), as well as for several of the original predictors. High VIF indicates that individual predictors contain overlapping information, which increases the uncertainty of their estimated regression coefficients and makes their individual effects difficult to interpret reliably. For this reason, odds-ratio interpretation is based on the `Full Features` model rather than the hybrid model. Importantly, high multicollinearity does not necessarily reduce the model's predictive performance, so the classification metrics of the hybrid model can still be evaluated normally.
-
 
 #### Regression Performance
 
@@ -1072,7 +1078,6 @@ The 2D MDS representation also performs relatively well on its own. Its AUC of $
 
 In contrast, the 2D PCA representation performs substantially worse. Its AUC drops to $0.6589$, while sensitivity falls to $0.3166$. This indicates that the linear PCA projection loses important information needed for classification.
 
-
 ```{r}
 #| label: fig-lr-cm
 #| fig-cap: "Confusion Matrix Heatmap for Best Model (Full + 2D MDS)."
@@ -1091,7 +1096,7 @@ For survivors, the model correctly identifies $285$ cases, corresponding to $27.
 
 ### $k$-Nearest Neighbours
 
-The *$k$-Nearest Neighbors* ($k$-NN) algorithm is a non-parametric method that predicts the outcome based on the values of an observation's $k$ closest neighbours in the feature space. Since $k$-NN relies on distance-based measures, the features were standardized independently within each CV fold.
+The $k$-Nearest Neighbors ($k$-NN) algorithm is a non-parametric method that predicts the outcome based on the values of an observation's $k$ closest neighbours in the feature space. Since $k$-NN relies on distance-based measures, the features were standardized independently within each CV fold.
 
 #### Parameter Tuning
 
@@ -1187,7 +1192,6 @@ The structure of the decision tree trained on `Full Features` ($cp = 0.002$) is 
 
 As expected, sex serves as the primary root split, while passenger class, age, and family size determine subsequent branches. While the upper levels provide clear, general rules, the lower nodes capture more detailed interactions between features because the tree is less heavily pruned.
 
-
 #### Comparing Different Feature Spaces
 
 To evaluate classification performance across feature spaces for the tuned Decision Tree models, ROC curves were generated using out-of-fold CV predictions (@fig-dt-roc).
@@ -1217,9 +1221,7 @@ create_simple_table(dt_performance, colnames = c(
 
 ```
 
-The `Full Feature` space achieved the best results, with the highest $\text{AUC}$ ($0.8336$), $\text{Sensitivity}$ ($0.6809$), and $\text{F1}$ score ($0.7354$), closely followed by the hybrid space (`Full + 2D MDS`). `2D PCA` performed noticeably worse across all metrics, with an $\text{AUC}$ of only $0.6756$. 
-
-
+The `Full Feature` space achieved the best results, with the highest $\text{AUC}$ ($0.8336$), $\text{Sensitivity}$ ($0.6809$), and $\text{F1}$ score ($0.7354$), closely followed by the hybrid space (`Full + 2D MDS`). `2D PCA` performed noticeably worse across all metrics, with an $\text{AUC}$ of only $0.6756$.
 
 To further examine the classification errors of the `Full Features` model, its out-of-fold confusion matrix is shown below (@fig-dt-cm).
 
@@ -1247,8 +1249,8 @@ Random Forest algorithm is a non-parametric method that combines multiple decisi
 
 To improve the stability and performance of the models, several settings were changed:
 
-* Ensemble size --- 1000 classification trees were used to obtain more stable out-of-fold probability predictions.
-* Parameter Tuning --- models were tested with different values of `mtry` (the number of features considered at each split), while `min.node.size` was set to 20. Model performance was evaluated using 10-fold CV.
+-   Ensemble size --- 1000 classification trees were used to obtain more stable out-of-fold probability predictions.
+-   Parameter Tuning --- models were tested with different values of `mtry` (the number of features considered at each split), while `min.node.size` was set to 20. Model performance was evaluated using 10-fold CV.
 
 ```{r}
 #| label: fig-rf-tuning
@@ -1278,6 +1280,7 @@ To evaluate classification performance across different feature sets for the tun
 draw_roc_curve(rf_models, method_name = 'Random Forest', custom_title = 'ROC Curves — Random Forest')
 
 ```
+
 The ROC curves show very similar performance for `Full Features` and `Full + 2D MDS`, with `2D MDS` performing only slightly worse. In contrast, `2D PCA` consistently shows the lowest performance.
 
 #### Random Forest Performance
@@ -1313,10 +1316,163 @@ draw_model_confusion_matrix(
 
 ```
 
-The confusion matrix for the `Full Features` model shows higher specificity than sensitivity. The model correctly classifies $570$ non-survivors, which represents $55.02%$ of all observations and corresponds to a specificity of $89.34%$. There are $68$ false positives, accounting for $6.56%$ of the sample. 
+The confusion matrix for the `Full Features` model shows higher specificity than sensitivity. The model correctly classifies $570$ non-survivors, which represents $55.02\%$ of all observations and corresponds to a specificity of $89.34\%$. There are $68$ false positives, accounting for $6.56\%$ of the sample.
 
-For survivors, the model correctly identifies $261$ cases, or $25.19%$ of all observations, resulting in a sensitivity of $65.58%$. The remaining $137$ survivors are incorrectly classified as non-survivors, representing $13.22%$ of the sample.
+For survivors, the model correctly identifies $261$ cases, or $25.19\%$ of all observations, resulting in a sensitivity of $65.58\%$. The remaining $137$ survivors are incorrectly classified as non-survivors, representing $13.22\%$ of the sample.
 
 Overall, the model produces more false negatives than false positives, meaning that it is more likely to classify survivors as non-survivors than the other way around.
 
-## Results
+### SVM
+
+*Support Vector Machine* (SVM) is a supervised learning method that identifies the observations closest to the class separation and uses them to determine the classification of the remaining observations. The radial basis function (RBF) kernel was used to allow the model to capture non-linear relationships between the features and survival. Since SVM is sensitive to the scale of the features, variables were standardized within CV folds before fitting the model.
+
+#### Parameter Tuning
+
+To improve the stability and performance of the models, two parameters were optimized (@fig-svm-tuning).
+
+```{r}
+#| label: fig-svm-tuning
+#| fig-cap: 'SVM Parameter Tuning. Cost parameter ($C$) evaluated at the optimal kernel width ($\sigma$) for each feature space.'
+
+draw_svm_tuning(svm_models)
+
+```
+
+The cost parameter ($C$) controls the balance between a wider margin and penalties for misclassified observations, while the kernel width ($\sigma$) determines how far the influence of individual support vectors extends. The best ROC-AUC results were obtained for `Full Features` ($C = 16, \sigma = 0.03$) and `Full + 2D MDS` ($C = 8, \sigma = 0.03$), suggesting that these parameter settings provided a good balance between model flexibility and generalization.
+
+#### Comparing Different Feature Spaces
+
+To evaluate classification performance across different feature sets for the tuned SVM models, ROC curves were generated using out-of-fold CV predictions (@fig-svm-roc).
+
+```{r}
+#| label: fig-svm-roc
+#| fig-cap: 'ROC Curves Comparison Across Feature Spaces for SVM.'
+
+draw_roc_curve(svm_models, method_name = 'SVM', custom_title = 'ROC Curves — SVM')
+
+```
+
+The ROC curves show very similar performance for `Full Features` and `Full + 2D MDS`, with `2D MDS` performing only slightly worse. In contrast, `2D PCA` consistently shows the lowest performance.
+
+#### SVM Performance
+
+All classification metrics were calculated from pooled out-of-fold predictions obtained through 10-fold CV (@tbl-svm-performance).
+
+```{r}
+#| label: tbl-svm-performance
+#| tbl-cap: 'SVM Performance Metrics Across Feature Spaces (10-fold CV).'
+#| cap-location: bottom
+
+create_simple_table(svm_performance, colnames = c(
+  'Feature Set', 'AUC', 'Accuracy', 'Sensitivity', 'Specificity', 'F1'
+))
+
+```
+
+The `Full Features` space achieved the highest AUC ($0.8465$), indicating the best overall ability to distinguish between the two classes of `survival`. The hybrid space (`Full + 2D MDS`) performed best in terms of $\text{Accuracy}$ ($0.8041$), $\text{Specificity}$ ($0.9075$), and $\text{F1}$ score ($0.7145$). In contrast, `2D MDS` achieved the highest $\text{Sensitivity}$ ($0.6910$), although this came with lower specificity. As in the previous models, `2D PCA` performed worse across most metrics, with an $\text{AUC}$ of $0.7165$ and an $\text{F1}$ score of $0.4765$.
+
+To examine the classification errors of the `Full Features` model in more detail, its out-of-fold confusion matrix is shown in @fig-svm-cm.
+
+```{r}
+#| label: fig-svm-cm
+#| fig-cap: "Confusion Matrix Heatmap for Best Model (Full Features)."
+
+draw_model_confusion_matrix(
+  svm_models[['Full Features']],
+  custom_title = 'Confusion Matrix — SVM',
+  custom_subtitle = 'Full Features dataset')
+
+```
+
+The confusion matrix for the `Full Features` model shows higher specificity than sensitivity. The model correctly classifies $577$ non-survivors, which represents $55.69\%$ of all observations and corresponds to a specificity of $90.44\%$. There are $61$ false positives, accounting for $5.89\%$ of the sample.
+
+For survivors, the model correctly identifies $254$ cases, or $24.52\%$ of all observations, resulting in a sensitivity of $63.82%$. The remaining $144$ survivors are incorrectly classified as non-survivors, representing $13.90%$ of the sample.
+
+Overall, the model produces more false negatives than false positives, meaning that it is more likely to classify survivors as non-survivors than the other way around.
+
+## Models Performance Summary
+
+A comparison of the best-performing variants for each supervised learning algorithm (by AUC value) shows fairly consistent performance across the CV results (@tbl-supervised-table). The corresponding ROC curves are shown in @fig-supervised-roc.
+
+```{r}
+#| label: fig-supervised-roc
+#| fig-cap: 'Out-of-fold ROC curves for the best-performing supervised models. For each method, the feature set with the highest AUC is included.'
+
+draw_comparative_roc(best_supervised_models)
+
+```
+
+One clear pattern is that most models reach a similar accuracy level, around $80\%$--$81\%$. The single *Decision Tree* achieved the heighest accuracy ($0.8118$), but its AUC was lower ($0.8336$), indicating that its ability to distinguish between the two classes was somewhat weaker. This difference is due to the fact that Accuracy is evaluated at the default classification threshold of $0.5$, while AUC reflects the model's ability to distinguish between the two classes across different classification thresholds.
+
+The `Full Features` *Random Forest* achieved the highest AUC ($0.8668$), suggesting the strongest overall class discrimination among the evaluated models. Using an ensemble of trees also results in smoother probability estimates than those produced bu a single *Decision Tree*.
+
+```{r}
+#| label: tbl-supervised-table
+#| tbl-cap: 'Comparison of model performance across unsupervised methods. For each method, the feature set with the highest AUC is included. Best results are highlighted.'
+#| cap-location: bottom
+
+create_simple_table(
+  model_comparison_formatted, 
+  colnames = c('Model', 'Feature Set', 'AUC', 'Accuracy', 'Sensitivity', 'Specificity', 'F1')
+)
+```
+
+Logistic Regression with the `Full + 2D MDS` feature set achieved the highest Sensitivity ($0.7161$) and F1 score ($0.7336$). This suggests that addding the MDS coordinates helped the model identify a larger proportion of survivors while maintaining a good balance between precision and recall.
+
+Another common pattern among the better-performing models, including *SVM* and *Random Forest*, is the difference between high Specificity (around $90\%$) and more moderate Sensitivity (around $64\%$). At the default decision threshold of $0.5$, the models therefore tend to classify non-survivors more reliably than survivors.
+
+This pattern is partly related to the strong association between passenger sex and survival, with male passengers being much more likely to belong to the non-survivor class. A similar pattern can be seen in the clustering results, e.g., *PAM* with $k = 2$ ($\approx 93\%$ Specificity) produced two clusters that perfectly separated the passengers by sex, with one cluster containing only female passengers and the other containing only male passengers.
+
+## Final Model Selection & Test
+
+### Selection
+
+Based on the cross-validation results, the **Random Forest** model trained on the `Full Features` set was selected as the final model, as it achieved the highest ROC-AUC among all evaluated models.
+
+To obtain an unbiased estimate of its performance and asses whether the parameter tuning introduced any overfitting during cross-validation, the final model was evaluated on an independent test set. It contained $20\%$ of the data and was not used during model development.
+
+### Test Set Performance
+
+The evaluation on the test set shows that the model's performance remained consistent with the CV estimates (@tbl-final-evaluation).
+
+```{r}
+#| label: tbl-final-evaluation
+#| tbl-cap: 'Random Forest performance using Train Set (Full Features, CV) and Test Set.'
+#| cap-location: bottom
+
+create_simple_table(
+  final_comparison_df, 
+  colnames = c('Evaluation Subset', 'AUC', 'Accuracy', 'Sensitivity', 'Specificity', 'F1')
+)
+```
+
+The model maintained strong performance on unseen data, achieving an $\text{AUC}$ of $0.8542$ and an $\text{Accuracy}$ of $0.8062$. These results are close to the corresponding 10-fold CV estimates ($\text{AUC} = 0.8668$, $\text{Accuracy} = 0.8021$). The minimal performance difference ($\Delta \text{AUC} = 0.0126$) suggest that the model generalizes well to unseen observations does not suffer from overfitting.
+
+To inspect the error distribution on the test set, the confusion matrix was created (@fig-test-cm).
+
+```{r}
+#| label: fig-test-cm
+#| fig-cap: 'Confusion Matrix Heatmap on Test Set (Random Forest — Full Features).'
+#| cap-location: bottom
+
+draw_test_confusion_matrix(
+  best_final_model,
+  test_data = titanic_test
+)
+```
+
+Consistent with the cross-validation results, the model achieves higher specificity than sensitivity on the unseen test data. It is more effective at identifying non-survivors, while being more conservative when predicting survival at the default $0.5$ probability threshold.
+
+# Conclusions
+
+The key takeaways from this analysis are:
+
+-   **Primary determinants of survival** (@sec-eda) Passenger sex emerged as the single most important factor associated with survival. Women were considerably more likely to survive than men. In fact, using sex alone as a predictor --- as illustrated by the PAM clustering results (@sec-pam) --- yields an accuracy of approximately $78\%$. The second most important factor was class of travel. However, its effect was particularly pronounced among men in first class and among women, while survival rates for men in second and third class were relatively similar.
+
+    Other factors associated with survival included family size, fare, and age. Passengers travelling in smaller family groups generally had higher survival rates, while fare was strongly related to class of travel. Age also played a role, with younger passengers generally having higher survival rates. However, these factors had a much smaller impact than sex and class.
+
+-   **Models performance is bottlenecked** (@sec-modeling) The modeling results suggest that the dataset has a natural accuracy ceiling of approximately $80$--$82\%$, likely reflecting the noise and uncertainty in the data. This is unsurprising, as survival in a maritime disaster such as the Titanic was influenced by numerous factors that cannot be fully captured by the available variables. Although ensemble models achieve accuracy comparable to that of simpler classifiers, they perform better in terms of model quality and generalization abilities, as indicated by their higher $\text{AUC}$ values.
+
+    The best-performing model was a *Random Forest* trained on `Full Features` dataset, achieving an $\text{AUC} = 0.8668$ and an $\text{Accuracy} = 0.8021$. On the test subset, it achieved an $\text{AUC} = 0.8542$ and an $\text{Accuracy} = 0.8062$. The similar performance across the training and test subsets suggests that the model did not suffer from overfitting.
+
+-   **Potential for improvement** The main limitation of the analysis is the large amount of missing information. One of the potentially most informative variables is `Cabin`, which contains information about the deck on which a passenger's cabin was located. This variable was excluded from the analysis because most of its values are missing. This is not properly reflected in the @tbl-raw-data-types, because `Cabin` has wrongly coded missing values.

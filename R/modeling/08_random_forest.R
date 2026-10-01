@@ -19,7 +19,7 @@ rf_models <- lapply(names(datasets_rf), function(name) {
   rf_grid <- expand.grid(
     mtry = mtry_vals,
     splitrule = 'gini',
-    min.node.size = 20
+    min.node.size = 20 #c(1,10,15,20)
   )
   
   set.seed(SEED)

@@ -129,3 +129,19 @@ evaluate_supervised_methods <- function(models_list) {
     )
   }))
 }
+
+
+# highlights by color the maximum value in each of specified columns
+highlight_max <- function(df, cols, color = 'lightblue') {
+  df %>% 
+    mutate(across(all_of(cols), function(x) {
+      if (!is.numeric(x)) return(x)
+      
+      max_val <- max(x)
+      formatted <- formatC(x, digits = 4)
+      
+      ifelse(!is.na(x) & abs(x - max_val) < 1e-6,
+             cell_spec(formatted, format = 'html', bold = TRUE, color = color),
+             formatted)
+    }))
+}

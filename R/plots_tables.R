@@ -1565,14 +1565,216 @@ draw_rf_importance <- function(rf_model) {
     )
 }
 
+draw_svm_tuning <- function(svm_models_list) {
+  
+  # extract tuning results from all data variants
+  tuning_df <- bind_rows(lapply(names(svm_models_list), function(name) {
+    
+    m <- svm_models_list[[name]]
+    df <- m$results %>% 
+      group_by(C) %>% 
+      filter(ROC == max(ROC, na.rm = TRUE)) %>% 
+      slice(1) %>% 
+      ungroup() %>% 
+      mutate(feature_set = name)
+    
+    best_C <- m$bestTune$C
+    best_sigma <- m$bestTune$sigma
+    
+    df$is_best <- (abs(df$C - best_C) < 1e-7) & (abs(df$sigma - best_sigma) < 1e-7)
+    return(df)
+  }))
+  
+  ggplot(tuning_df, aes(x = C, y = ROC,
+                        color = feature_set, group = feature_set)) +
+    
+    geom_line(linewidth = 1) +
+    
+    geom_point(
+      data = subset(tuning_df, !is_best),
+      size = 2.2,
+      alpha = 0.6,
+      show.legend = FALSE
+    ) +
+    geom_point(
+      data = subset(tuning_df, is_best),
+      shape = 21,
+      size = 4.5,
+      stroke = 1.3,
+      fill = 'white',
+      show.legend = FALSE
+    ) +
+    
+    geom_text_repel(
+      data = subset(tuning_df, is_best),
+      aes(label = paste0('C = ', round(C, 4), '\nσ = ', sigma)),
+      fontface = 'bold',
+      size = 3.5,
+      direction = 'y',
+      nudge_y = 0.025,
+      segment.color = NA,
+      show.legend = FALSE
+    ) +
+    
+    scale_color_brewer(palette = 'Set1') +
+    scale_x_log10(breaks = unique(tuning_df$C)) +
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+    
+    labs(
+      title = 'SVM (RBF Kernel) Parameter Tuning',
+      subtitle = 'Optimal ROC-AUC cross-validation score across Cost (C) and Sigma (σ) Parameters',
+      x = 'Cost Parameter (C, log10 scale)',
+      y = 'ROC-AUC (10-fold CV)',
+      color = 'Feature Set'
+    ) +
+    
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13, margin = margin(b = 4)),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10)),
+      
+      plot.margin = margin(30, 20, 20, 20),
+      axis.title.x = element_text(margin = margin(t = 9), size = 10),
+      axis.title.y = element_text(margin = margin(r = 9), size = 10),
+      
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold", size = 10),
+      
+      panel.grid.minor = element_blank(),
+    )
+}
+
+draw_comparative_roc <- function(best_models_list) {
+  
+  roc_list <- lapply(best_models_list, function(m) {
+    preds <- m$pred
+    
+    if (!is.null(m$bestTune)) {
+      preds <- inner_join(preds, m$bestTune, by = names(m$bestTune))
+    }
+    
+    roc(
+      response = preds$obs,
+      predictor = preds$Yes,
+      levels = c('No', 'Yes')
+    )
+  })
+  
+  names(roc_list) <- paste0(
+    names(best_models_list),
+    ' (AUC = ',
+    sapply(roc_list, function(r) formatC(r$auc, digits = 4)),
+    ')'
+  )
+  
+  xlim = c(0, 0.6) 
+  ylim = c(0.5, 1.0)
+  
+  ggroc(roc_list, size = 1.1, legacy.axes = FALSE) +
+    geom_abline(
+      intercept = 1,
+      slope = 1,
+      linetype = 'dashed',
+      color = 'gray50',
+      linewidth = 0.6
+    ) +
+    
+    coord_cartesian(xlim = xlim, ylim = ylim) +
+    
+    scale_color_brewer(palette = 'Set1') +
+    labs(
+      title = 'ROC Curves Comparison — Supervised Learning',
+      subtitle = 'Out-of-fold 10-fold CV performance for optimal algorithm configurations',
+      x = 'Specificity',
+      y = 'Sensitivity',
+      color = 'Model'
+    ) +
+    
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13, margin = margin(b = 4)),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10)),
+      plot.margin = margin(10,10,20,20),
+      
+      axis.title.x = element_text(margin = margin(t = 8), size = 10),
+      axis.title.y = element_text(margin = margin(r = 8), size = 10),
+      
+      legend.position = "bottom",
+      #legend.direction = "vertical",
+      legend.title = element_text(face = "bold", size = 10),
+      
+      panel.grid.minor = element_blank(),
+    )
+  
+  
+}
+
+draw_test_confusion_matrix <- function(model, test_data) {
+  
+  test_preds <- predict(model, newdata = test_data)
+  actuals <- test_data[['survived']]
+  
+  cm <- confusionMatrix(test_preds, actuals, positive = 'Yes')
+  df_cm <- as.data.frame(cm$table)
+  colnames(df_cm) <- c('Predicted', 'Actual', 'Freq')
+  
+  total_obs <- sum(df_cm$Freq)
+  df_cm <- df_cm %>% 
+    mutate(
+      pct = Freq / total_obs * 100,
+      label = paste0(Freq, '\n', round(pct, 2), '%'),
+      text_color = ifelse(Freq > max(Freq) * 0.4, 'white', 'gray15')
+    )
+  
+  ggplot(df_cm, aes(x = Predicted, y = Actual, fill = Freq)) +
+    
+    geom_tile(color = 'white', linewidth = 1.5) +
+    geom_text(
+      aes(label = label, color = text_color),
+      fontface = 'bold',
+      size = 4.5,
+      lineheight = 0.9
+    ) +
+    
+    scale_color_identity() +
+    scale_fill_gradient(
+      low = "#DCEEFF",
+      high = "#C6284F"
+    ) +
+    
+    coord_fixed() +
+    labs(
+      title = 'Confusion Matrix — Test Set',
+      subtitle = 'Evaluated on 178 unseen passenger observations',
+      x = 'Predicted Class',
+      y = 'Actual Class'
+    ) +
+    
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 11, hjust = 0.5),
+      plot.margin = margin(10,10,20,20),
+      plot.subtitle = element_text(color = "gray30", size = 10, margin = margin(b = 10), hjust = 0.5),
+      
+      axis.text = element_text(size = 11, face = "bold", color = "gray20"),
+      axis.title.x = element_text(margin = margin(t = 8), size = 10),
+      axis.title.y = element_text(margin = margin(r = 8), size = 10),
+      
+      panel.grid = element_blank(),
+      legend.position = "none"
+    )
+}
+ 
 
 # -------------------------------- Tables ------------------------------------ #
 
 create_simple_table <- function(data, colnames) {
   kable(data,
+        format = 'html',
         col.names = colnames,
         align = c('l', rep('c', times= length(colnames) - 1)),
-        row.names = FALSE) %>% 
+        row.names = FALSE,
+        escape = FALSE) %>% 
     kable_styling(
       bootstrap_options = c("striped", "hover", "condensed"),
       full_width = FALSE, position = 'center') %>%
