@@ -1,19 +1,207 @@
-figcaption,
-.table-caption,
-caption {
-  text-align: center !important;
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap&subset=latin,latin-ext');
+
+:root {
+  --ocean-navy: #112238;
+  --ocean-blue: #22577A;
+  --ocean-sky: #38A3A5;
+  --ocean-light: #F0F7FA;
+  --ocean-border: #D0E1ED;
+  --ocean-text: #2B3A4A;
+  --ocean-muted: #6C7D8E;
+  --ocean-accent: #57CC99;
 }
 
-#tbl-raw-data-types table {
-  margin-left: 10px;
-  margin-right: 10px;
+/* ---------- General typography ---------- */
+
+body {
+  font-family: 'Roboto', sans-serif;
+  color: var(--ocean-text);
+  line-height: 1.75;
+  font-size: 1rem;
 }
 
+p {
+  text-align: justify;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Roboto', sans-serif;
+  color: var(--ocean-navy);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  border-bottom: 3px solid var(--ocean-blue);
+  padding-bottom: 0.45em;
+}
+
+h2 {
+  border-bottom: 1px solid var(--ocean-border);
+  padding-bottom: 0.3em;
+  margin-top: 1.8em;
+}
+
+/* ---------- Links ---------- */
+
+a {
+  color: var(--ocean-blue);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--ocean-navy);
+  text-decoration: underline;
+}
+
+/* ---------- Inline code ---------- */
+
+code {
+  font-family: 'Roboto', monospace, sans-serif;
+  color: #1F6B82 !important;
+  background-color: #E6F1F6 !important;
+  border: 1px solid #C4DCE7;
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  font-size: 0.88em;
+  font-weight: 500;
+}
+
+/* ---------- Tables  ---------- */
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--ocean-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+thead th {
+  background-color: var(--ocean-navy);
+  color: #FFFFFF;
+  font-weight: 600;
+  border-bottom: 2px solid var(--ocean-border);
+  padding: 0.8rem 1rem;
+  letter-spacing: 0.02em;
+}
+
+tbody td {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid #E4EFEF;
+}
+
+tbody tr:nth-child(even) {
+  background-color: #F4F9FB;
+}
+
+tbody tr:hover {
+  background-color: #E2ECF2;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ---------- Table spacing ---------- */
+
+#tbl-raw-data-types table,
 #tbl-lifeboat-distr table {
   margin-left: 10px;
   margin-right: 10px;
 }
 
-p {
-  text-align: justify;
+/* ---------- Captions ---------- */
+
+figcaption,
+.table-caption,
+caption {
+  text-align: center !important;
+  color: var(--ocean-muted);
+  font-size: 0.9rem;
+  font-style: italic;
+  margin-top: 0.5rem;
+}
+
+/* ---------- Table of Contents ---------- */
+
+#TOC {
+  font-size: 0.9rem;
+  border-left: 2px solid var(--ocean-border);
+  padding-left: 0.75rem;
+}
+
+#TOC ul {
+  padding-left: 1rem;
+}
+
+#TOC li {
+  margin-bottom: 0.35rem;
+}
+
+#TOC a {
+  color: var(--ocean-text) !important;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+#TOC a:hover {
+  color: var(--ocean-blue) !important;
+  text-decoration: underline;
+}
+
+#TOC a.active, 
+#TOC .nav-link.active {
+  color: var(--ocean-navy) !important;
+  font-weight: 700;
+  background-color: var(--ocean-light) !important;
+  border-left: 3px solid var(--ocean-blue);
+  padding-left: 0.5rem;
+  border-radius: 0 4px 4px 0;
+}
+
+/* ---------- Blockquotes / highlighted notes ---------- */
+
+blockquote {
+  border-left: 4px solid var(--ocean-sky);
+  background-color: #EBF4F7;
+  color: #284252;
+  padding: 0.8rem 1rem;
+  border-radius: 0 6px 6px 0;
+  margin: 1.2rem 0;
+}
+
+blockquote p {
+  margin-bottom: 0;
+}
+
+/* ---------- Lists ---------- */
+
+li::marker {
+  color: var(--ocean-sky);
+}
+
+/* ---------- Horizontal rules ---------- */
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--ocean-border);
+  margin: 2rem 0;
+}
+
+/* ---------- Strong emphasis ---------- */
+
+strong, b {
+  color: var(--ocean-navy);
+  font-weight: 700;
+}
+
+/* ---------- Selection ---------- */
+
+::selection {
+  color: #FFFFFF;
+  background-color: var(--ocean-blue);
 }
