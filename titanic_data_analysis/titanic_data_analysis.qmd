@@ -15,12 +15,12 @@ format:
 
 execute:
   echo: false
+  warning: false
 ---
 
 ```{r}
 #| label: setup
 #| output: false
-#| cache: true        # set to false to rerun after modifying files loaded with source()
 
 # Data analysis
 library(DataExplorer)
@@ -58,7 +58,7 @@ library(here)
 
 
 source(here("R", "functions.R"))
-source(here("R", "plots_tables.R"))
+source(here("R", "load_plots_and_tables_functions.R"))
 
 source(here("R", "01_import.R"))
 source(here("R", "02_cleaning.R"))
@@ -84,9 +84,9 @@ source(here("R", "Modeling", "10_modeling_results.R"))
 
 # Introduction
 
-The Titanic disaster is the world's most famous shipwreck. Beyond it's historical significance, the disaster provides an interesting case study for exploring patterns in passenger characteristics and survival outcomes. I this report, we use an expanded version of a well-known Titanic dataset, obtained from [Kaggle — Titanic Extended Dataset](https://www.kaggle.com/datasets/pavlofesenko/titanic-extended/data). It contains information about passengers aboard the RMS Titanic during it's maiden voyage, including demographic variables, ticket and travel information, and survival status.
+The Titanic disaster is the world's most famous shipwreck. Beyond it's historical significance, the disaster provides an interesting case study for exploring patterns in passenger characteristics and survival outcomes. In this report, we use an expanded version of a well-known Titanic dataset, obtained from [Kaggle — Titanic Extended Dataset](https://www.kaggle.com/datasets/pavlofesenko/titanic-extended/data). It contains information about passengers aboard the RMS Titanic during it's maiden voyage, including demographic variables, ticket and travel information, and survival status.
 
-These characteristics provide an opportunity to examine how different passenger characteristics were associated with their chances of survival. The aim of this report is to explore the structure of the dataset and to identify the patters that may help explain differences in survival outcomes.
+These variables provide an opportunity to examine how different passenger characteristics were associated with their chances of survival. The aim of this report is to explore the structure of the dataset and to identify the patterns that may help explain differences in survival outcomes.
 
 The analysis begins with a general overview of the data, including its structure, variable types, and missing values, followed by the necessary data preparation. We then conduct an exploratory data analysis (EDA) to examine the distributions of individual variables and explore relationships between them.
 
@@ -102,7 +102,7 @@ The raw dataset consists of `r dim(titanic_raw)[1]` records and `r dim(titanic_r
 
 ```{r}
 #| label: tbl-raw-data-types
-#| tbl-cap: 'Variables, their types and number of missing records in raw dataset.' 
+#| tbl-cap: 'Variables, their types, and number of missing records in raw dataset.' 
 #| cap-location: bottom
 #| layout-ncol: 2
 
@@ -137,7 +137,7 @@ The first step of the data preparation process was to inspect the raw dataset fo
 
 Missing values were imputed where possible using historical records, summary statistics, and contextual knowledge:
 
--   `Embarked` and `Boarded`: These variables serve essentially identical purposes duplicates. Because missing values were not overlapping, missing entries in `Boarded` were imputed using corresponding values from `Embarked`.
+-   `Embarked` and `Boarded`: These variables serve essentially identical purposes. Because missing values were not overlapping, missing entries in `Boarded` were imputed using corresponding values from `Embarked`.
 
 -   `Lifeboat`: A new category was introduced. For passengers who perished in the disaster, missing values in `Lifeboat` were transformed into `NS` (*No Survival*).
 
@@ -145,7 +145,7 @@ Missing values were imputed where possible using historical records, summary sta
 
     -   The extended dataset includes additional information about passengers based on the passenger list available on [Wikipedia](https://en.wikipedia.org/wiki/Passengers_of_the_Titanic#Passenger_list). Unfortunately, the dataset omits survival status, as this information is represented using color coding in the original Wikipedia table. This issue was addressed by scraping the Wikipedia table and merging the extracted survival information with the Kaggle dataset. As a result, the number of missing values in `Survived` has been significantly reduced.
 
-    -   In several instances, survival status was missing despite existing records in the `Lifeboat` variable. Historical records (e.g., [*Encyclopedia Titanica*](https://www.encyclopedia-titanica.org) indicate that only a small number of known fatalities occurred among passengers who reached a lifeboat. Since no such cases were identified in this dataset, all passengers recorded as having occupied a lifeboat were assumed to have survived.
+    -   In several instances, survival status was missing despite existing records in the `Lifeboat` variable. Historical records (e.g., [*Encyclopedia Titanica*](https://www.encyclopedia-titanica.org)) indicate that only a small number of known fatalities occurred among passengers who reached a lifeboat. Since no such cases were identified in this dataset, all passengers recorded as having occupied a lifeboat were assumed to have survived.
 
 -   `Age_wiki`: Missing values were imputed using the mean age within the passenger's class of travel.
 
@@ -186,7 +186,7 @@ Following this process, the now cleaned dataset contains `r ncol(titanic_clean)`
 
 ```{r}
 #| label: tbl-clean-data-types
-#| tbl-cap: 'Variables, their types and number of missing records in dataset after data cleaning.' 
+#| tbl-cap: 'Variables, their types, and number of missing records in dataset after data cleaning.' 
 #| cap-location: bottom
 
 df_tbl <- data.frame(
@@ -209,7 +209,7 @@ Exploratory Data Analysis (EDA) is an essential step in understanding the patter
 
 ## Distributions of Quantitative Variables
 
-Here, we take a closer look at the distributions of the quantitative variables (`r quant_vars`) in the dataset. This helps us understand how the values are spread out and spot any noticeable patterns or outliers.
+Here, we take a closer look at the distributions of the quantitative variables (``r quant_vars``) in the dataset. This helps us understand how the values are spread out and spot any noticeable patterns or outliers.
 
 ```{r}
 #| label: tbl-quant-summary
@@ -240,7 +240,7 @@ create_simple_table(df_tbl, c(
 
 ```
 
-Summary statistics for the quantitative variables can be found in @tbl-quant-summary. Missing values were removed separately for each variables when calculation the statistics. It is worth noting the large differences in the ranges of some variables' values, which may indicate a need for standarization when using distance-sensitive algorithms (@sec-modeling).
+Summary statistics for the quantitative variables can be found in @tbl-quant-summary. Missing values were removed separately for each variables when calculating the statistics. It is worth noting the large differences in the ranges of some variables' values, which may indicate a need for standarization when using distance-sensitive algorithms (@sec-modeling).
 
 The same conclusion can be drawn from the analysis of boxplots shown in @fig-quant-boxplots. Furthermore, a number of outliers can be observed for each variable. They are represented by individual points and correspond to values outside the range of $Q_1 - 1.5\cdot(Q_3 - Q_1)$ and $Q_3 + 1.5\cdot(Q_3 - Q_1)$.
 
@@ -270,7 +270,7 @@ wrap_plots(plots, ncol = 2)
 
 ## Distributions of Qualitative Variables {#sec-dist-qual}
 
-Here, we take a closer look at the distributions of the qualitative variables (`r qual_vars`) in the dataset. The distributions are visualized in @fig-qual-bar. Missing values were excluded from the analysis.
+Here, we take a closer look at the distributions of the qualitative variables (``r qual_vars``) in the dataset. The distributions are visualized in @fig-qual-bar. Missing values were excluded from the analysis.
 
 ```{r}
 #| label: fig-qual-bar
@@ -286,13 +286,13 @@ wrap_plots(plots, ncol = 2)
 
 Non-survivors constitute majority of passengers, with a fatality rate of $61,6\%$. This is consistent with the distribution of `lifeboat` (@tbl-lifeboat-distr) --- when the corresponding lifeboat categories are combined, the proportion of passengers who did not board a lifeboat is broadly consistent with the proportion of non-survivors. The small discrepancy can be attributed primarily to missing values.
 
-Males account for nearly two-thirds of the passengers. The age distribution is concentrated in `young adult` and `adult` groups, which together account for almost $90\%$ of all passengers. More than half of the passengers traveled in 3rd class, making it more numerous than 1st and 2nd class combined. Most passengers traveled without relatives, accounting for approximately $60\%$ of all observations. Although `small` family groups represent $33\%$ of observations, larger families are rare.
+Males account for nearly two-thirds of the passengers. The age distribution is concentrated in `young adult` and `adult` groups, which together account for almost $90\%$ of all passengers. More than half of the passengers traveled in 3rd-class, making it more numerous than 1st- and 2nd-class combined. Most passengers traveled without relatives, accounting for approximately $60\%$ of all observations. Although `small` family groups represent $33\%$ of observations, larger families are rare.
 
 The distribution of departure locations is heavily imbalanced, with Southampton (`S`) accounting for $70.0\%$ of passengers, followed by Cherbourg (`C`) with $20.6\%$ and Queenstown (`Q`) with $9.4\%$.
 
 ```{r}
 #| label: tbl-lifeboat-distr
-#| tbl-cap: "Distribution of `lifeboat`."
+#| tbl-cap: "Distribution of  `lifeboat`."
 #| fig-cap-location: bottom
 #| layout-ncol: 2
 
@@ -387,11 +387,11 @@ corrplot(
 
 Furthermore, strong associations between `lifeboat` and `sex` ($0.57$) and between `lifeboat` and `class` ($0.52$) can be observed. The perfect association between `is_child` and `age_group` ($1.00$) is expected, as `is_child` was derived directly from `age_group` --- one of these features should be omitted in predictive models.
 
-## Qualitative Variables vs Survival {#seq-qual-vs-surv}
+## Qualitative Variables vs Survival {#sec-qual-vs-surv}
 
 To further examine the associations between qualitative features and the target variable (`survived`), proportion plots were constructed (@fig-survival-barplots).
 
-The strong *Cramer's V association* previously observed for `sex` (@fig-cor-matrix-qual) is clearly justified by these distributions, as the difference in survival rate between genders is staggering ($72.8\%$ for females vs. $19.3\%$ for males). Conversely, while the overall association coefficient between `class` and `survived` was moderate, the plot reveals clear differences in survival across classes, with passengers in 1st class achieved a survival rate of $62.6\%$ nearly two and a half times higher than those in 3rd class ($25.4\%$), with 2nd class occupying a middle position ($43.8\%$).
+The strong *Cramer's V association* previously observed for `sex` (@fig-cor-matrix-qual) is clearly justified by these distributions, as the difference in survival rate between sexes is staggering ($72.8\%$ for women vs. $19.3\%$ for men). Conversely, while the overall association coefficient between `class` and `survived` was moderate, the plot reveals clear differences in survival across classes. Passengers in 1st-class achieving a survival rate of $62.6\%$, nearly two and a half times higher than those in 3rd-class ($25.4\%$), with 2nd-class occupying a middle position ($43.8\%$).
 
 ```{r}
 #| label: fig-survival-barplots
@@ -413,7 +413,7 @@ A similar caveat applies to family size categories --- while medium ($23.8\%$) a
 
 ## Quantitative Variables vs Survival
 
-To examine how continuous variables relate to survival status (`survived`), kernel density estimates were constructed (@fig-survival-densities).
+To examine how continuous variables relate to survival status, kernel density estimates were constructed (@fig-survival-densities).
 
 The continuous distribution of `age` aligns closely with the earlier categorical findings. The survival density (blue) visibly exceeds non-survival (red) for young children under 10 years old. Between ages 20 and 30, non-survival dominates slightly, after which the two curves broadly overlap across middle and older age brackets. Similarly, the continuous variant of `family_size_group` does not provide any new information, as passengers traveling alone had a higher fatality rate, while those traveling in smaller families (2--4 people) had a higher chance of survival.
 
@@ -431,7 +431,7 @@ wrap_plots(plots, nrow = 3) +
   theme(legend.position = 'bottom')
 ```
 
-A far more pronounced divergence appears in `fare` (displayed on a $\log_{10}$ scale to handle skewness). The lower end of fare spectrum is dominated by non-survivors, producing a sharp red peak. Beyond $£30$, and particularly $£100$, the density shifts in favour of survivors. This further confirms that better class of travel increased the likelihood of survival.
+The differences are considerably more pronounced for `fare` (displayed on a $\log_{10}$ scale to handle skewness). The lower end of fare spectrum is dominated by non-survivors, producing a sharp red peak. Beyond $£30$, and particularly $£100$, the density shifts in favour of survivors. This further confirms that better class of travel increased the likelihood of survival.
 
 ## Multivariate Analysis
 
@@ -439,21 +439,21 @@ In this sections, we combine the previously examined variables to gain a more co
 
 Figures in @fig-multi-socioecon and @fig-multi-dynamics examine how socio-demographic and economic factors jointly relate to passenger survival.
 
-The heatmap in @fig-multi-socioecon-1 combines age, passenger class and sex, revealing that the patterns observed in the earlier analyses (see @seq-qual-vs-surv) persist when these characteristics are considered simultaneously.
+The heatmap in @fig-multi-socioecon-1 combines age, passenger class and sex, revealing that the patterns observed in the earlier analyses (see @sec-qual-vs-surv) persist when these characteristics are considered simultaneously.
 
--   Sex remains the strongest factor associated with survival, but the size of the difference between females and males varied considerably by passenger class. Adult females in 1st- and 2nd-class had very high survival rates, reaching $97.7\%–97.8\%$ in 1st-class and $87.2\%–88.1\%$ in 2nd-class for young adults and adults, respectively. Senior females in 1st-class also maintained high survival ($87.5\%$).
+-   Sex remains the strongest factor associated with survival, but the size of the difference between females and males varied considerably by passenger class. Adult women in 1st- and 2nd-class had very high survival rates, reaching $97.7\%–97.8\%$ in 1st-class and $87.2\%–88.1\%$ in 2nd-class for young adults and adults, respectively. Senior women in 1st-class also maintained high survival ($87.5\%$).
 
-    In contrast, males experienced high mortality across all classes: 2nd-class adult male survival fell to $6.7\%$ ($11.0\%$ for young adults), while 1st-class senior male survival dropped to just $6.2\%$.
+    In contrast, men experienced high mortality across all classes: 2nd-class adult male survival fell to $6.7\%$ ($11.0\%$ for young adults), while 1st-class senior male survival dropped to just $6.2\%$.
 
 <!-- -->
 
 -   The role of age varied considerably by passenger class. Male children in 1st and 2nd class had survival rates of $100.0\%$ and $91.7\%$, respectively, while 2nd-class female children reached a rate of $100.0\%$. The $50\%$ survival among 1st-class female children should be interpreted cautiously, as it's likely affected by the small number of observations.
 
-    In 3rd class, however, child survival was substantially lower, at $39.0\%$ for females and $33.3\%$ for males. This suggests that the survival advantage observed among children in the higher classes was not present to the same extend among those travelling in 3rd class.
+    In 3rd-class, however, child survival was substantially lower, at $39.0\%$ for females and $33.3\%$ for males. This suggests that the survival advantage observed among children in the higher classes was not present to the same extend among those travelling in 3rd-class.
 
 <!-- -->
 
--   Third-class passengers consistently had lower survival rates. Even among adult females, survival in 3rd class was considerably lower, at $36.2\%$ for adults and $57.7\%$ for young adults. Survival among adult males in 3rd class remained low at $12.8\%-13.6\%$, while no 3rd-class male seniors in the dataset survived. The latter result should again be interpreted with caution due to the small sample size.
+-   3rd-class passengers consistently had lower survival rates. Even among adult women, survival in 3rd-class was considerably lower, at $36.2\%$ for adults and $57.7\%$ for young adults. Survival among adult men in 3rd-class remained low at $12.8\%-13.6\%$, while no 3rd-class male seniors in the dataset survived. The latter result should again be interpreted with caution due to the small sample size.
 
 ```{r}
 #| label: fig-multi-socioecon
@@ -474,7 +474,7 @@ draw_multivariate_boxplot(x_var = 'class', y_var = 'fare')
 
 The bar plot in @fig-multi-socioecon-2 examines the sex and class composition of passengers who boarded the lifeboats (and, as established in @sec-dist-qual, survived).
 
--   First-class passengers accounted for the largest absolute number of lifeboat occupants, with more that 200 people. This becomes particularly notable when compared with the overall class distribution (see @fig-qual-bar): 1st-class passengers represented only $24.7\%$ of the total populations, compared with $54.2\%$ for 3rd class. Among lifeboat occupants, however, 1st-class passengers accounted for $41\%$:
+-   1st-class passengers accounted for the largest absolute number of lifeboat occupants, with more that 200 people. This becomes particularly notable when compared with the overall class distribution (see @fig-qual-bar): 1st-class passengers represented only $24.7\%$ of the total populations, compared with $54.2\%$ for 3rd-class. Among lifeboat occupants, however, 1st-class passengers accounted for $41\%$:
 
     $$
     \frac{\text{1st-class lifeboat occupants}}{\text{all lifeboat occupants}} \approx 41.02 \% \qquad \qquad \frac{\text{1st-class passengers}}{\text{all passengers}} \approx 24.68  \%
@@ -506,9 +506,9 @@ df_temp <- titanic_clean %>%
 
 ```
 
--   Women were strongly overrepresented among lifeboat occupants in 1st- and 2nd-class. Females accounted for $68.7%$ of 1st-class and $77.4%$ of 2nd-class lifeboat occupants. This pattern is consistent with the historical application of *Birkenhead drill* (*women and children first*). The particularly high female representation in the upper classes may also reflect their easier access to the boat deck and the more orderly evacuation during the early stages of the sinking. Importantly, the Titanic did not begin with a single, clearly announced general evacuation, as the crew initially sought to avoid unnecessary panic. This meant that passengers depended heavily on information provided by crew members and on their ability to reach the boat deck.
+-   Women were strongly overrepresented among lifeboat occupants in 1st- and 2nd-class. They accounted for $68.7\%$ of 1st-class and $77.4\%$ of 2nd-class lifeboat occupants. This pattern is consistent with the historical application of *Birkenhead drill* (*women and children first*). The particularly high female representation in the upper classes may also reflect their easier access to the boat deck and the more orderly evacuation during the early stages of the sinking. Importantly, the Titanic did not begin with a single, clearly announced general evacuation, as the crew initially sought to avoid unnecessary panic. This meant that passengers depended heavily on information provided by crew members and on their ability to reach the boat deck.
 
--   The gender gap was considerably smaller among 3rd-class lifeboat occupants. In 3rd-class, females accounted for $56.3%$ of lifeboat occupants, compared with $43.7%$ males. This relatively small difference should be interpreted in the context of the gender composition of 3rd-class, which was more male-dominated ($69.53\%$ male).
+-   The gender gap was considerably smaller among 3rd-class lifeboat occupants. In 3rd-class, women accounted for $56.3\%$ of lifeboat occupants, compared with $43.7\%$ men. This relatively small difference should be interpreted in the context of the gender composition of 3rd-class, which was more male-dominated ($69.53\%$ male).
 
     This result should also be considered in it's historical context. A common popular depiction of the Titanic disaster is that 3rd-class passengers were deliberately locked below deck and systematically prevented from reaching the lifeboats. This is, however, a myth rather than an accurate description of the evacuation. There was no simple, ship-wide policy of locking 3rd-class passengers below deck to prevent them from reaching the lifeboats. Their access was nevertheless more difficult in practice due to the ship's layout, their greater distance from the boat deck, unfamiliarity with the vessel, language barriers, and their reliance on crew members for directions. The experience of 3rd-class steward [John Edward Hart](https://www.encyclopedia-titanica.org/titanic-survivor/john-edward-hart.html), who helped guide passengers from the lower decks towards the boat deck during the evacuation, illustrates the important role that crew members played in helping 3rd-class passengers navigate the ship.
 
@@ -536,7 +536,7 @@ draw_multivariate_embarked()
 
 The figure in @fig-multi-dynamics-1 shows how family size and sex influenced survival rates.
 
--   A similar pattern can be observed for both sexes: survival rates increased with family size, reaching their highest levels for families of $3$--$4$ members, before dropping sharply for larger families. However, it should be noted that the sample sizes for medium and large families ($>5$ members) are relatively small (@fig-qual-bar). Consequently, the fluctuations observed for larger families should be interpreted with caution, as the overall trend is more informative than the exact survival rates at individual family sizes.
+-   A similar pattern can be observed for both sexes: survival rates increased with family size, reaching their highest levels for families of $3$--$4$ members, before dropping sharply for larger families. However, it should be noted that the sample sizes for medium and large families ($>5$ members) are relatively small (@fig-qual-bar). Consequently, the fluctuations observed for larger families should be interpreted with caution.
 
 -   When compared with the baseline average survival rates by sex (@fig-survival-barplots), travelling with family was associated with a higher probability of survival. Among female passengers, the overall survival rate was $72.8\%$, compared with $73.4\%$ among those travelling alone and up to $86.2\%$ among those travelling in small families. For male passengers, the corresponding rates were $19.3\%$ overall, $16.4\%$ for those travelling alone, and up to $36.7\%$ for those travelling in small families.
 
@@ -579,7 +579,7 @@ The analysis also highlighted critical technical considerations for subsequent d
 
 For this analysis, the continuous variables were selected (`fare`, `age`, `siblings_spouses`, `parents_children`). The `class` variable, although originally categorical, was also included by treating it as an ordinal variable and mapping its labels to their corresponding numerical values. This approach was considered appropriate because passenger class has a natural ordering, with the numerical values representing the relative position of each class. Furthermore, as shown in @sec-eda, passenger class was identified as one of the most important factors associated with survival.
 
-Because PCA is highly sensitive to variable scales, and features like `fare` exhibit great value dispersion (see @fig-quant-boxplot), all variables were standardized prior to the analysis.
+Because PCA is highly sensitive to variable scales, and features like `fare` exhibit great value dispersion (see @fig-quant-boxplots), all variables were standardized prior to the analysis.
 
 ```{r}
 #| label: fig-pca-1
@@ -588,15 +588,15 @@ Because PCA is highly sensitive to variable scales, and features like `fare` exh
 #|   - 'Explained variance by principal component. Bars show the variance explained by individual components, while the dashed line represents the cumulative explained variance.'
 #|   - 'Heatmap of variable contributions to the principal components.'
 #| layout-ncol: 2
-#| fig-width: 9
-#| fig-height: 7
+#| fig-width: 12
+#| fig-height: 9
 
 draw_scree_plot()
 draw_pca_heatmap()
 
 ```
 
-The scree plot @fig-pca-1-1 shows that the first three principal components account for approximately $80\%$ of the total variance. As detailed in @fig-pca-1-2, the loadings matrix reveals how each original feature contributes to these new dimensions, with absolute values closer to 1 indicate a stronger relationship.
+The scree plot (@fig-pca-1-1) shows that the first three principal components account for approximately $80\%$ of the total variance. As detailed in @fig-pca-1-2, the loadings matrix reveals how each original feature contributes to these new dimensions, with absolute values closer to 1 indicating a stronger relationship.
 
 Primarily associated with `fare` and `class`, `PC1` effectively captures passenger wealth and accommodation (with a contribution from `age`). `PC2` is dominated by variables describing family structure (`siblings_spouses` and `parents_children`), isolating family group size from economic status.
 
@@ -609,8 +609,8 @@ Although three components are required to capture $80\%$ of the variance, using 
 #|   - '2D scatter plot of passengers with 95% confidence ellipses by survival.'
 #|   - 'PCA biplot showing passengers groups with original variable vectors.'
 #| layout-ncol: 2
-#| fig-width: 9
-#| fig-height: 7
+#| fig-width: 12
+#| fig-height: 9
 
 draw_pca_scatterplot(var_explained = var_explained)
 draw_pca_biplot()
@@ -632,7 +632,7 @@ The considerable overlap between the two $95\%$ confidence ellipses indicates th
 
 *Multidimensional Scaling* (MDS) is a dimensionality reduction technique that aims to measure the distance between variables and represent them in a lower-dimensional space while preserving their pairwise dissimilarities as accurately as possible.
 
-Not all variables were included in the MDS procedure. The analysis was conducted without `family_size`, as it duplicates data of `parents_children` and `siblings_spouses`; `is_child`, as it duplicates information contained in `age`; and `lifeboat`, as it directly determines survival). The following variables were also excluded from the calculations but were used in selected plots in this section: `survived`, `age_group`, `family_size_group`. The categorical versions of quantitative variables were used to facilitate plots analysis.
+Not all variables were included in the MDS procedure. The analysis was conducted without `family_size`, as it duplicates data of `parents_children` and `siblings_spouses`, `is_child`, as it duplicates information contained in `age`, and `lifeboat`, as it directly determines survival. The following variables were also excluded from the calculations but were used in selected plots in this section: `survived`, `age_group`, `family_size_group`. The categorical versions of quantitative variables were used to facilitate plots analysis.
 
 ```{r}
 #| label: fig-shepard
@@ -698,13 +698,13 @@ draw_mds_3d_plotly()
 
 MDS captured the same key relationships associated with survival as those identified in the EDA (@sec-eda). The following description focuses on the two-dimensional plots.
 
--   Sex is the main factor separating the clusters. The upper clusters consist of women, while the lower consist of men. This is a perfect separation, as no observations from the two categories overlap. The second most influential factor is passenger class, and consequently fare. Observations from different classes overlap to some extend, particulary those 2nd- and 3rd-classes. The cluster associated with the 1st-class is the largest (as indicated by the $95\%$ confidence ellipse size), which is likely related to the wide range of ticket fares within this class.
+-   Sex is the main factor separating the clusters. The upper clusters consist of women, while the lower consist of men. This is a perfect separation, as no observations from the two categories overlap. The second most influential factor is passenger class, and consequently fare. Observations from different classes overlap to some extend, particularly those corresponding to 2nd- and 3rd-classes. The cluster associated with the 1st-class is the largest (as indicated by the $95\%$ confidence ellipse size), which is likely related to the wide range of ticket fares within this class.
 
     It should also be emphasised that `survived` variable was not included in the MDS calculations and therefore did not influence the formation of clusters. In contrast, `age` and family size variables were included, although they do not appear to define the clusters as clearly. Nevertheless, these variables provide valuable additional context for interpreting the results.
 
 -   The MDS plots confirm several conclusions from the EDA. The centers of the $95\%$ confidence ellipses for non-survivors are aligned with the clusters of male passengers across all classes, with more survivors in the 1st-class. Most of female casualties are concentrated in the 3rd-class cluster.
 
--   Age groups are relatively evenly distributed across passenger classes, with the exception of children. Most observations belonging to the child group are located towards the upper part of the plot, corresponding primarily to the 2nd- and 3rd-classes. This group also appears to have a relatively high fatality rate, as most of these observations are coloured red in the survival plot. This further supports the lower survival rate observed for children in @fig-multi-socioecon-1.
+-   Age groups are relatively evenly distributed across passenger classes, with the exception of children. Most observations belonging to the child group are located towards the upper part of the plot, corresponding primarily to the 2nd- and 3rd-classes. This group also appears to have a relatively high fatality rate, as most of these observations are coloured red in the survival plot. This further supports the lower survival rate observed for 3rd-class children in @fig-multi-socioecon-1.
 
 -   Family-size categories show a similar distribution, with some exceptions for medium and large families. The latter occur only within the 3rd-class clusters and are associated with non-survival. Medium-sized families also include some observations from the 1st- and 2nd-classes, where survival appears more likely than among passengers from the 3rd-class.
 
@@ -731,9 +731,9 @@ wrap_plots(c(p1, p2, p3, p4, p5, p6), ncol = 2)
 
 MDS revealed a clear structure in the dataset, with observations primarily separated along two dimensions. The strongest separation is observed by sex, with male and female passengers forming distinct, non-overlapping groups. Passenger class and fare provide a further, although less pronounced, gradient within these groups.
 
-The structure revealed by MDS is consistent with the key findings from the EDA. Higher survival rates are concentrated among female and first-class passengers, whereas clusters with lower survival rates are predominantly composed of male passengers from the second and third classes. Large families are also associated with lower survival rates.
+The structure revealed by MDS is consistent with the key findings from the EDA. Higher survival rates are concentrated among female and first-class passengers, whereas clusters with lower survival rates are predominantly composed of male passengers from the 2nd- and 3rd-classes. Large families are also associated with lower survival rates.
 
-The observed structure also suggests that the relationships between passenger characteristics and survival may be non-linear. This makes tree-based classification methods, such as Random Forest and XGBoost, promising candidates for the predictive stage, as they can capture non-linear relationships and interactions between predictors without requiring them to be specified explicitly. Furthermore, the elongated, non-spherical shape of the clusters indicates that density-based or hierarchical clustering will perform significantly better than $K$-Means.
+The observed structure also suggests that the relationships between passenger characteristics and survival may be non-linear. This makes tree-based classification methods, such as Random Forest, promising candidates for the predictive stage, as they can capture non-linear relationships and interactions between predictors without requiring them to be specified explicitly. Furthermore, the elongated, non-spherical shape of the clusters indicates that density-based or hierarchical clustering will perform significantly better than $K$-Means.
 
 # Modeling {#sec-modeling}
 
@@ -741,7 +741,11 @@ Having explored the main patterns in the data, we now move on to the modelling s
 
 Before any calculations, some variables were also removed. Most importantly, `lifeboat` has been excluded, because it determines `survival`. To reduce collinearity, the two variables `parents_children` and `siblings_spouses` were removed in favour of the single `family_size` feature. We also leave out categorical variables such as `is_child`, `age_group`, and `family_size_group`, as they largely duplicate information contained in the corresponding numerical variables. This also gives the models access to the original numerical information rather than its simplified qualitative versions.
 
-The modeling section covers both unsupervised and supervised approaches: \* Unsupervised Learning: Clustering algorithms (AGNES and PAM) are used to assess whether natural passenger groupings align with survival patterns without using target labels. \* Supervised Learning: Classification algorithms are trained to predict individual survival outcomes based on passenger attributes.
+The modeling section covers both unsupervised and supervised approaches: 
+
+* Unsupervised Learning: Clustering algorithms (AGNES and PAM) are used to assess whether natural passenger groupings align with survival patterns without using target labels. 
+
+* Supervised Learning: Classification algorithms are trained to predict individual survival outcomes based on passenger attributes.
 
 To obtain more reliable and unbiased performance estimates, we use 10-fold cross-validation on ROC-AUC metrics. The test set remains entirely untouched during this phase and is reserved exclusively for the final evaluation of the champion model to verify its capability. This reduces the influence of any single random split of the training data and provides a more stable basis for comparing the different modelling approaches.
 
@@ -797,7 +801,7 @@ create_simple_table(cluster_profiles_k6_pam, c('Cluster', 'Count', 'Rate of Surv
                                            'Median of Age', 'Median of Fare', 'Median of Family Size'))
 ```
 
-@fig-pam-2-6 shows the *PAM* clusters assignments projected onto the 2D *MDS* space. Comparing this result with the feature-coloured MDS plots in @fig-mds-2d shows that, for $K = 2$, the main and only distinctions between the two clusters is sex.
+@fig-pam-2-6 shows the PAM clusters assignments projected onto the 2D MDS space. Comparing this result with the feature-coloured MDS plots in @fig-mds-2d shows that, for $K = 2$, the main and only distinctions between the two clusters is sex.
 
 Using $K = 6$ produces a more detailed segmentation of the passengers (@tbl-pam-6). The resulting clusters appear to be differentiated mainly by sex and passenger class (and naturally fare). Notably, despite the target variable `survived` being excluded from the distance calculation, the resulting clusters nevertheless show clear differences in survival rates. This is particularly visible in clusters 1 and 6 --- cluster 1 (predominantly 3rd-class males) has a low survival rate of $13\%$, while cluster 6 (predominantly 2nd-class females) reaches a rate of $90.8\%$. Thus, even though survival was not included in the clustering procedure, the resulting passenger profiles capture characteristics that are strongly associated with survival.
 
@@ -816,11 +820,11 @@ p1 + p2 &
 
 #### Reduced feature space (PCA & MDS)
 
-To asses how dimensionality reduction affects *PAM* clustering, the algorithm was applied directly to the two-dimensional spaces generated by *MDS* and *PCA*. The resulting partition are shown in @fig-pam-pca-mds.
+To asses how dimensionality reduction affects PAM clustering, the algorithm was applied directly to the two-dimensional spaces generated by MDS and PCA. The resulting partition are shown in @fig-pam-pca-mds.
 
-In the *MDS* projection, *PAM* produces the same sex-driven clustering pattern observed in the full Gower space. This is expected because *MDS* was constructed from the same pairwise Gower distances used by *PAM*, preserving the main structure of the original dissimilarity space.
+In the MDS projection, PAM produces the same sex-driven clustering pattern observed in the full Gower space. This is expected because MDS was constructed from the same pairwise Gower distances used by PAM, preserving the main structure of the original dissimilarity space.
 
-Conversly, clustering in the *PCA* space produces a less distinct partition. Standard *PCA* relies on linear relationships among continuous variables, resulting in a denser observations cloud where *PAM* fails to establish clear class boundaries.
+Conversly, clustering in the PCA space produces a less distinct partition. Standard PCA relies on linear relationships among continuous variables, resulting in a denser observations cloud where PAM fails to establish clear class boundaries.
 
 ```{r}
 #| label: fig-pam-pca-mds
@@ -893,9 +897,9 @@ The process of merging clusters can be performed using several different linkage
 get_dendrogram_plot()
 ```
 
-@fig-agnes-dendrogram-2-6 shows the hierarchical clustering structure produced by *AGNES* using Ward's linkage method, with the trees coloured according to the resulting cluster assignments for $K = 2$ and $K = 6$. In a dendrogram, Height represents the dissimilarity between clusters at the point of their merge. The large increase in Height at the first split (Height $\approx 6.5$) indicates a substantial difference between the two resulting branches, suggesting a clear separation of the dataset into two major clusters. Those largely correspond to sex (see @fig-agnes-2-6).
+@fig-agnes-dendrogram-2-6 shows the hierarchical clustering structure produced by AGNES using Ward's linkage method, with the trees coloured according to the resulting cluster assignments for $K = 2$ and $K = 6$. In a dendrogram, Height represents the dissimilarity between clusters at the point of their merge. The large increase in Height at the first split (Height $\approx 6.5$) indicates a substantial difference between the two resulting branches, suggesting a clear separation of the dataset into two major clusters. Those largely correspond to sex (see @fig-agnes-2-6).
 
-When the hierarchy is cut at $K = 6$, each of these branches is further divided into three distinct sub-clusters. Those occur at lower heights, reflecting smaller differences within these groups. More precise characteristics summary of the $K = 6$ tree can be found in @tbl-agnes-6. The resulting clusters are largely consistent with those obtained using *PAM* (@tbl-pam-6). The main difference can be observed in the fourth cluster, where the average survival rate increases to $25\%$, compared with $17\%$ for the corresponding *PAM* cluster.
+When the hierarchy is cut at $K = 6$, each of these branches is further divided into three distinct sub-clusters. Those occur at lower heights, reflecting smaller differences within these groups. More precise characteristics summary of the $K = 6$ tree can be found in @tbl-agnes-6. The resulting clusters are largely consistent with those obtained using PAM (@tbl-pam-6). The main difference can be observed in the fourth cluster, where the average survival rate increases to $25\%$, compared with $17\%$ for the corresponding PAM cluster.
 
 ```{r}
 #| label: tbl-agnes-6
@@ -908,9 +912,9 @@ create_simple_table(cluster_profiles_k6_agnes, c('Cluster', 'Count', 'Rate of Su
 
 ```
 
-@fig-pam-2-6 shows the *AGNES* clusters assignments projected onto the 2D *MDS* space, with observations coloured according to their cluster. For $K = 2$, sex remains the main dividing factor. However, in contrast to the *PAM* clustering (@fig-pam-2-6), several observations from the male group have been assigned to the second cluster. As shown in @fig-mds-2d, these observations correspond to the male passengers from the 1st-class.
+@fig-agnes-2-6 shows the AGNES clusters assignments projected onto the 2D MDS space, with observations coloured according to their cluster. For $K = 2$, sex remains the main dividing factor. However, in contrast to the PAM clustering (@fig-pam-2-6), several observations from the male group have been assigned to the second cluster. As shown in @fig-mds-2d, these observations correspond to the male passengers from the 1st-class.
 
-The $K =6$ projection is largely consistent with the *PAM* clustering, with differences mainly limited to a few observations assigned to the fourth cluster.
+The $K =6$ projection is largely consistent with the PAM clustering, with differences mainly limited to a few observations assigned to the fourth cluster.
 
 ```{r}
 #| label: fig-agnes-2-6
@@ -927,7 +931,7 @@ p1 + p2 &
 
 #### Reduced feature space (PCA & MDS)
 
-As in the *PAM* analysis, we assess the effect of dimensionality reduction on the *AGNES* algorithm. The clustering was performed in the two-dimensional spaces generated by *MDS* and *PCA*, with the results shown in @fig-agnes-pca-mds.
+As in the PAM analysis, we assess the effect of dimensionality reduction on the AGNES algorithm. The clustering was performed in the two-dimensional spaces generated by MDS and PCA, with the results shown in @fig-agnes-pca-mds.
 
 ```{r}
 #| label: fig-agnes-pca-mds
@@ -947,11 +951,11 @@ p4 <- draw_pca_scatterplot(df = pca_train_extended, target_col = 'cluster_agnes'
 
 ```
 
-In the *MDS* projection, *AGNES* produces clusters determined almost entirely by sex, in contrast to the more nuanced cluster assignments obtained in the full Gower space. Clustering in the *PCA* space yields results similar to those obtained with *PAM* (@fig-pam-pca-mds), with most differences concentrated in the lower-central region of the observation cloud.
+In the MDS projection, AGNES produces clusters determined almost entirely by sex, in contrast to the more nuanced cluster assignments obtained in the full Gower space. Clustering in the PCA space yields results similar to those obtained with PAM (@fig-pam-pca-mds), with most differences concentrated in the lower-central region of the observation cloud.
 
 #### AGNES Performance
 
-Similarly to the *PAM* analysis, we compare four different *AGNES* configurations against the actual `surived` labels. The clustering results are evaluated using the *Adjusted Rand Index* (*ARI*) and traditional classification metrics, calculated after assigning each cluster to either `Yes` or `No` based on the majority survival outcome within the cluster. The results are presented in @tbl-agnes-metrics.
+Similarly to the PAM analysis, we compare four different AGNES configurations against the actual `surived` labels. The clustering results are evaluated using the *Adjusted Rand Index* (ARI) and traditional classification metrics, calculated after assigning each cluster to either `Yes` or `No` based on the majority survival outcome within the cluster. The results are presented in @tbl-agnes-metrics.
 
 ```{r}
 #| label: tbl-agnes-metrics
@@ -968,19 +972,19 @@ create_simple_table(agnes_metrics_summary, colnames = c('Method',
 
 The key takeaways are:
 
--   On the full Gower matrix ($K=2$), *AGNES* achieves an $ARI$ of $0.2802$ and an $Accuracy$ of $76.54\%$). Applying *AGNES* directly on the 2D *MDS* projection results in slightly higher scores ($ARI = 0.3038$, $Accuracy = 77.70\%$). This difference can be attributed to the different spatial representations --- in the full Gower space, Ward linkage assigns some 1st-class male passengers to the same cluster as females, increasing $Sensitivity$ ($73.87\%$) while slightly reducing overall accuracy compared with the sex-driven separation in MDS space.
+-   On the full Gower matrix ($K=2$), AGNES achieves an $\text{ARI}$ of $0.2802$ and an $\text{Accuracy}$ of $76.54\%$. Applying AGNES directly on the 2D MDS projection results in slightly higher scores ($\text{ARI} = 0.3038$, $\text{Accuracy} = 77.70\%$). This difference can be attributed to the different spatial representations --- in the full Gower space, Ward linkage assigns some 1st-class male passengers to the same cluster as females, increasing $\text{Sensitivity}$ ($73.87\%$) while slightly reducing overall accuracy compared with the sex-driven separation in MDS space.
 
--   The choice of dissimilarity representation appears to have a greater impact on the clustering results than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or after 2D *MDS* projection, results in similar alignment with the survival labels, with approximately $78\%$ $Accuracy$ and an $ARI$ of around $0.30$. In contrast, clustering based on Euclidean distances in the *PCA* space achieves substantially lower alignment, at approximately $67\%$ $Accuracy$ and $ARI \approx 0.10$.
+-   The choice of dissimilarity representation appears to have a greater impact on the clustering results than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or after 2D MDS projection, results in similar alignment with the survival labels, with approximately $78\%$ $\text{Accuracy}$ and an $ARI$ of around $0.30$. In contrast, clustering based on Euclidean distances in the PCA space achieves substantially lower alignment, at approximately $67\%$ $\text{Accuracy}$ and $\text{ARI} \approx 0.10$.
 
--   Increasing the number of clusters to $K = 6$ maintains the same overall $Accuracy$ of $76.54\%$, while increasing $Specificity$ to $92.95\%$. The additional clusters provide a more detailed partition of the data, but this does not result in stronger overall agreement with the survival labels.
+-   Increasing the number of clusters to $K = 6$ maintains the same overall $\text{Accuracy}$ of $76.54\%$, while increasing $\text{Specificity}$ to $92.95\%$. The additional clusters provide a more detailed partition of the data, but this does not result in stronger overall agreement with the survival labels.
 
 ### Clustering --- Summary
 
--   Both *PAM* and *AGNES* with Ward linkage produce very similar cluster assignments. Despite not using the survived variable, both methods consistently identify sex as the main factor driving the observed structure of the dataset.
+-   Both PAM and AGNES with Ward linkage produce very similar cluster assignments. Despite not using the survived variable, both methods consistently identify sex as the main factor driving the observed structure of the dataset.
 
--   The choice of dissimilarity representation matters far more than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or via 2D *MDS*, achieves baseline classification alignment of $\approx 78\%$ $Accuracy$ ($ARI \approx 0.30$). In contrast, Euclidean metrics applied to *PCA* components fail across both algorithms ($\approx 67\%$ $Accuracy$, $ARI \approx 0.10$).
+-   The choice of dissimilarity representation matters far more than the choice of clustering algorithm. Using Gower dissimilarity, either in its full matrix form or via 2D MDS, achieves baseline classification alignment of $\approx 78\%$ $\text{Accuracy}$ ($\text{ARI} \approx 0.30$). In contrast, Euclidean metrics applied to PCA components fail across both algorithms ($\approx 67\%$ $\text{Accuracy}$, $\text{ARI} \approx 0.10$).
 
--   *MDS* proves to be an ideal feature compressor for mixed-type clustering in this dataset. It retains virtually $100\%$ of the cluster separating information of the full Gower matrix while drastically simplifying the dimensionality.
+-   MDS proves to be an effective dimensionality reduction technique for clustering in this dataset. It preserves nearly all of the cluster-separating information contained in the full Gower distance matrix while substantially reducing dimensionality.
 
 ## Supervised Learning
 
@@ -1322,7 +1326,7 @@ For survivors, the model correctly identifies $261$ cases, or $25.19\%$ of all o
 
 Overall, the model produces more false negatives than false positives, meaning that it is more likely to classify survivors as non-survivors than the other way around.
 
-### SVM
+### Support Vector Machine
 
 *Support Vector Machine* (SVM) is a supervised learning method that identifies the observations closest to the class separation and uses them to determine the classification of the remaining observations. The radial basis function (RBF) kernel was used to allow the model to capture non-linear relationships between the features and survival. Since SVM is sensitive to the scale of the features, variables were standardized within CV folds before fitting the model.
 
@@ -1417,11 +1421,11 @@ create_simple_table(
 )
 ```
 
-Logistic Regression with the `Full + 2D MDS` feature set achieved the highest Sensitivity ($0.7161$) and F1 score ($0.7336$). This suggests that addding the MDS coordinates helped the model identify a larger proportion of survivors while maintaining a good balance between precision and recall.
+Logistic Regression with the `Full + 2D MDS` feature set achieved the highest Sensitivity ($0.7161$) and F1 score ($0.7336$). This suggests that adding the MDS coordinates helped the model identify a larger proportion of survivors while maintaining a good balance between precision and recall.
 
-Another common pattern among the better-performing models, including *SVM* and *Random Forest*, is the difference between high Specificity (around $90\%$) and more moderate Sensitivity (around $64\%$). At the default decision threshold of $0.5$, the models therefore tend to classify non-survivors more reliably than survivors.
+Another common pattern among the better-performing models, including SVM and *Random Forest*, is the difference between high Specificity (around $90\%$) and more moderate Sensitivity (around $64\%$). At the default decision threshold of $0.5$, the models therefore tend to classify non-survivors more reliably than survivors.
 
-This pattern is partly related to the strong association between passenger sex and survival, with male passengers being much more likely to belong to the non-survivor class. A similar pattern can be seen in the clustering results, e.g., *PAM* with $k = 2$ ($\approx 93\%$ Specificity) produced two clusters that perfectly separated the passengers by sex, with one cluster containing only female passengers and the other containing only male passengers.
+This pattern is partly related to the strong association between passenger sex and survival, with male passengers being much more likely to belong to the non-survivor class. A similar pattern can be seen in the clustering results, e.g., PAM with $k = 2$ ($\approx 93\%$ Specificity) produced two clusters that perfectly separated the passengers by sex, with one cluster containing only female passengers and the other containing only male passengers.
 
 ## Final Model Selection & Test
 
@@ -1467,12 +1471,18 @@ Consistent with the cross-validation results, the model achieves higher specific
 
 The key takeaways from this analysis are:
 
--   **Primary determinants of survival** (@sec-eda) Passenger sex emerged as the single most important factor associated with survival. Women were considerably more likely to survive than men. In fact, using sex alone as a predictor --- as illustrated by the PAM clustering results (@sec-pam) --- yields an accuracy of approximately $78\%$. The second most important factor was class of travel. However, its effect was particularly pronounced among men in first class and among women, while survival rates for men in second and third class were relatively similar.
+-   **Primary determinants of survival** (@sec-eda)
+
+    Passenger sex emerged as the single most important factor associated with survival. Women were considerably more likely to survive than men. In fact, using sex alone as a predictor --- as illustrated by the PAM clustering results (@sec-pam) --- yields an accuracy of approximately $78\%$. The second most important factor was class of travel. However, its effect was particularly pronounced among men in first class and among women, while survival rates for men in second and third class were relatively similar.
 
     Other factors associated with survival included family size, fare, and age. Passengers travelling in smaller family groups generally had higher survival rates, while fare was strongly related to class of travel. Age also played a role, with younger passengers generally having higher survival rates. However, these factors had a much smaller impact than sex and class.
 
--   **Models performance is bottlenecked** (@sec-modeling) The modeling results suggest that the dataset has a natural accuracy ceiling of approximately $80$--$82\%$, likely reflecting the noise and uncertainty in the data. This is unsurprising, as survival in a maritime disaster such as the Titanic was influenced by numerous factors that cannot be fully captured by the available variables. Although ensemble models achieve accuracy comparable to that of simpler classifiers, they perform better in terms of model quality and generalization abilities, as indicated by their higher $\text{AUC}$ values.
+-   **Models performance is bottlenecked** (@sec-modeling)
+
+    The modeling results suggest that the dataset has a natural accuracy ceiling of approximately $80$--$82\%$, likely reflecting the noise and uncertainty in the data. This is unsurprising, as survival in a maritime disaster such as the Titanic was influenced by numerous factors that cannot be fully captured by the available variables. Although ensemble models achieve accuracy comparable to that of simpler classifiers, they perform better in terms of model quality and generalization abilities, as indicated by their higher $\text{AUC}$ values.
 
     The best-performing model was a *Random Forest* trained on `Full Features` dataset, achieving an $\text{AUC} = 0.8668$ and an $\text{Accuracy} = 0.8021$. On the test subset, it achieved an $\text{AUC} = 0.8542$ and an $\text{Accuracy} = 0.8062$. The similar performance across the training and test subsets suggests that the model did not suffer from overfitting.
 
--   **Potential for improvement** The main limitation of the analysis is the large amount of missing information. One of the potentially most informative variables is `Cabin`, which contains information about the deck on which a passenger's cabin was located. This variable was excluded from the analysis because most of its values are missing. This is not properly reflected in the @tbl-raw-data-types, because `Cabin` has wrongly coded missing values.
+-   **Potential for improvement**
+
+    The main limitation of the analysis is the large amount of missing information. One of the potentially most informative variables is `Cabin`, which contains information about the deck on which a passenger's cabin was located. This variable was excluded from the analysis because most of its values are missing. This is not properly reflected in the @tbl-raw-data-types, because `Cabin` has wrongly coded missing values.
