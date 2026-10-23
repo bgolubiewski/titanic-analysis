@@ -66,3 +66,18 @@ cv_rf_performance <- rf_performance %>%
   select(evaluation, roc_auc, accuracy, sensitivity, specificity, f1)
 
 final_comparison_df <- bind_rows(cv_rf_performance, test_performance)
+
+# ============================================================
+# Export results as a .csv file
+# ============================================================
+
+write.csv(model_comparison, here("data", "model_comparison_export.csv"), row.names = FALSE)
+write.csv(final_comparison_df, here("data", "final_comparison_export.csv"), row.names = FALSE)
+
+imp <- ranger::importance(best_final_model$finalModel)
+importance_df <- data.frame(
+  Feature = names(imp),
+  Importance = as.numeric(imp)
+) %>% arrange(desc(Importance))
+
+write.csv(importance_df, here("data", "feature_importance_export.csv"), row.names = FALSE)
